@@ -1,0 +1,148 @@
+---
+title: "TestBench"
+author: "Brent Wilderman"
+date: "6/08/2024"
+format: 
+  html:
+    code-fold: true
+---
+
+## Quarto
+
+Quarto enables you to weave together content and executable code into a finished document. To learn more about Quarto see <https://quarto.org>.
+
+```{r}
+1 + 1
+```
+
+```{r}
+library(conflicted)
+library(tidyverse)
+library(DBI)
+library(duckdb)
+library(MASS)
+library(ggiraph)
+library(scales)
+filter <- dplyr::filter
+lag <- dplyr::lag
+```
+
+```{r}
+con <- dbConnect(duckdb::duckdb(), dbdir = "C:/Users/bawil/Documents/StockData/Databases/spyanalysis.db", read_only = FALSE)
+```
+
+```{r}
+result <- dbGetQuery(
+  con,
+  "SELECT m.*, 
+  	hl.* EXCLUDE (dt),
+  	cd.* EXCLUDE (dt),
+  	d.* EXCLUDE (dt),
+  	ga.* EXCLUDE (dt),
+  	sp.* EXCLUDE (dt),
+  	fc.* EXCLUDE (dt),
+  FROM spy_monthly m
+  	LEFT JOIN spy_monthly_highlow hl ON m.dt = hl.dt
+  	LEFT JOIN spy_monthly_consec_dir cd ON m.dt = cd.dt
+  	LEFT JOIN spy_monthly_decycler125 d ON m.dt = d.dt
+  	LEFT JOIN spy_monthly_geomavg5 ga ON m.dt = ga.dt
+  	LEFT JOIN spy_monthly_augenspikes sp ON m.dt = sp.dt
+  	LEFT JOIN spy_monthly_factorcalcs fc ON m.dt = fc.dt
+  ORDER BY m.dt;")
+```
+
+```{r}
+dec_slope_qtiles <- quantile(result$decycler_slope, na.rm = TRUE)
+
+dec_slope_iqr <- dec_slope_qtiles["75%"] - dec_slope_qtiles["25%"]
+
+#dec_slope_loutlier <- dec_slope_qtiles["25%"] - (1.5 * dec_slope_iqr)
+#dec_slope_uoutlier <- dec_slope_qtiles["75%"] + (1.5 * dec_slope_iqr)
+```
+
+```{r}
+fmt_result <- result |>
+  mutate(
+    dec_slope_lqt = dec_slope_qtiles["25%"],
+    dec_slope_mdn = dec_slope_qtiles["50%"],
+    dec_slope_uqt = dec_slope_qtiles["75%"],
+    tt_label = glue::glue("month: {format(dt, '%b, %Y')}\nchange: {percent(c2c_pct, accuracy = 0.01)}")
+  ) |>
+  dplyr::select(dt, mth_nm, c2c_pct, decycler_slope, dec_slope_lqt, dec_slope_mdn, dec_slope_uqt, tt_label)
+```
+
+### Comparisons
+
+@fig-comparisons Decycler slope's effect on monthly return.
+
+```{r}
+#| label: fig-comparisons
+#| fig-cap: "Decycler Slope vs Return Percent."
+#| warning: false
+
+test_plot <- ggplot(fmt_result, aes(c2c_pct, decycler_slope, colour = mth_nm)) + 
+  geom_point_interactive(aes(tooltip = tt_label, data_id = mth_nm)) +
+  geom_vline(aes(xintercept = 0.0), color = "black") +
+  geom_hline(aes(yintercept = dec_slope_mdn), color = "black", alpha = 0.75) +
+  geom_hline(aes(yintercept = dec_slope_lqt), color = "black", alpha = 0.5, linetype = "dashed") +
+  geom_hline(aes(yintercept = dec_slope_uqt), color = "black", alpha = 0.5, linetype = "dashed") +
+  theme_bw()
+
+girafe(ggobj = test_plot,
+  options = list(
+    opts_hover(css = ''),
+    opts_hover_inv(css = "opacity:0.1;"), 
+    opts_sizing(rescale = FALSE),
+    opts_tooltip(
+      css = htmltools::css(
+        background = 'brown',
+        border = '2px solid black;',
+        padding = '2px',
+        font_weight = 600
+      )
+    )
+  ),
+  height_svg = 4,
+  width_svg = 6)
+```
+
+```{r}
+dbDisconnect(con, shutdown=TRUE)
+```
+
+```{r}
+library(dlookr)
+```
+
+```{r}
+library(gt)
+library(tidyverse)
+library(glue)
+
+# Define the start and end dates for the data range
+start_date <- "2010-06-07"
+end_date <- "2010-06-14"
+
+# Create a gt table based on preprocessed
+# `sp500` table data
+sp500 %>%
+  dplyr::filter(date >= start_date & date <= end_date) %>%
+  dplyr::select(-adj_close) %>%
+  gt() %>%
+  tab_header(
+    title = "S&P 500",
+    subtitle = glue::glue("{start_date} to {end_date}")
+  ) %>%
+  fmt_date(
+    columns = vars(date),
+    date_style = 3
+  ) %>%
+  fmt_currency(
+    columns = vars(open, high, low, close),
+    currency = "USD"
+  ) %>%
+  fmt_number(
+    columns = vars(volume),
+    suffixing = TRUE
+  )
+```
