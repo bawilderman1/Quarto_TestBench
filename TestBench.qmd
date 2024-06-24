@@ -12,10 +12,6 @@ format:
 Quarto enables you to weave together content and executable code into a finished document. To learn more about Quarto see <https://quarto.org>.
 
 ```{r}
-1 + 1
-```
-
-```{r}
 library(conflicted)
 library(tidyverse)
 library(DBI)
@@ -23,6 +19,7 @@ library(duckdb)
 library(MASS)
 library(ggiraph)
 library(scales)
+library(ggthemes)
 filter <- dplyr::filter
 lag <- dplyr::lag
 ```
@@ -52,6 +49,10 @@ result <- dbGetQuery(
 ```
 
 ```{r}
+glimpse(result)
+```
+
+```{r}
 dec_slope_qtiles <- quantile(result$decycler_slope, na.rm = TRUE)
 
 dec_slope_iqr <- dec_slope_qtiles["75%"] - dec_slope_qtiles["25%"]
@@ -66,9 +67,22 @@ fmt_result <- result |>
     dec_slope_lqt = dec_slope_qtiles["25%"],
     dec_slope_mdn = dec_slope_qtiles["50%"],
     dec_slope_uqt = dec_slope_qtiles["75%"],
-    tt_label = glue::glue("month: {format(dt, '%b, %Y')}\nchange: {percent(c2c_pct, accuracy = 0.01)}")
+    month = factor(format(result$dt, "%b"), month.abb, ordered = TRUE),
+    tt_label = glue::glue(
+      "Month: {format(dt, '%b, %Y')}\n",
+      "Change: {percent(c2c_pct, accuracy = 0.01)}\n",
+      "Slope: {percent(decycler_slope, accuracy = 0.01)}")
   ) |>
-  dplyr::select(dt, mth_nm, c2c_pct, decycler_slope, dec_slope_lqt, dec_slope_mdn, dec_slope_uqt, tt_label)
+  dplyr::select(dt, mth_nm, c2c_pct, decycler_slope, dec_slope_lqt, dec_slope_mdn, dec_slope_uqt, month, tt_label)
+```
+
+```{r}
+#tcm <- ggthemes_data$tableau$`color-palettes`$regular$`Classic Cyclic`
+#tcm
+tcc12 <- ggthemes_data$tableau$`color-palettes`$regular$`Classic Cyclic` |> dplyr::slice(1:12) |> pull(value)
+
+names(tcc12) <- c(levels(fmt_result$month))
+tcc12
 ```
 
 ### Comparisons
@@ -80,30 +94,58 @@ fmt_result <- result |>
 #| fig-cap: "Decycler Slope vs Return Percent."
 #| warning: false
 
-test_plot <- ggplot(fmt_result, aes(c2c_pct, decycler_slope, colour = mth_nm)) + 
-  geom_point_interactive(aes(tooltip = tt_label, data_id = mth_nm)) +
+test_plot <- ggplot(fmt_result, aes(c2c_pct, decycler_slope, colour = month)) + 
+  geom_point_interactive(aes(tooltip = tt_label, `data-id` = month), extra_interactive_params = "data-id") +
   geom_vline(aes(xintercept = 0.0), color = "black") +
   geom_hline(aes(yintercept = dec_slope_mdn), color = "black", alpha = 0.75) +
   geom_hline(aes(yintercept = dec_slope_lqt), color = "black", alpha = 0.5, linetype = "dashed") +
   geom_hline(aes(yintercept = dec_slope_uqt), color = "black", alpha = 0.5, linetype = "dashed") +
-  theme_bw()
+  labs(title = "Log Decyler Slope % vs. Log Price Chance %",
+       subtitle = "box plot overlayed for decycler slope") +
+  guides(color = guide_legend(title = "Month")) +
+  theme_bw() +
+  #scale_color_tableau(palette = "Classic Cyclic")
+  scale_color_manual_interactive(values = tcc12, extra_interactive_params = "data-id", `data-id` = unique(fmt_result$month), data_id = function(breaks) as.character(breaks))
 
 girafe(ggobj = test_plot,
   options = list(
+    opts_sizing(rescale = TRUE),
+    opts_toolbar(saveaspng = FALSE),
+    opts_zoom(min = 0.5, max = 4),
     opts_hover(css = ''),
     opts_hover_inv(css = "opacity:0.1;"), 
+    #opts_hover_key(css = ''),
     opts_sizing(rescale = FALSE),
     opts_tooltip(
       css = htmltools::css(
-        background = 'brown',
-        border = '2px solid black;',
-        padding = '2px',
+        background = 'darkslategrey',
+        border = '1px solid darkslategrey;',
+        padding = '5px',
         font_weight = 600
       )
     )
-  ),
-  height_svg = 4,
-  width_svg = 6)
+  )#,
+  #height_svg = 4,
+  #width_svg = 6
+)
+```
+
+```{r}
+ggplot(result, aes(x = factor(yr_dir), y = c2c_pct)) +
+  geom_jitter(
+    width = 0.35, 
+    aes(color = factor(yr_dir)), 
+    alpha = 0.7,
+    show.legend = FALSE) +
+  geom_boxplot(
+    show.legend = FALSE, 
+    outlier.shape = NA, 
+    aes(fill = factor(yr_dir)), 
+    alpha = 0.0,
+    fatten = 1,
+    lwd = 0.75) +
+  theme_bw() +
+  scale_color_tableau(palette = "Classic 10")
 ```
 
 ```{r}
