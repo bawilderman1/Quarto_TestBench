@@ -149,6 +149,21 @@ ggplot(result, aes(x = factor(yr_dir), y = c2c_pct)) +
 ```
 
 ```{r}
+decades <- result |>
+  mutate(
+    month = factor(format(result$dt, "%b"), month.abb, ordered = TRUE),
+    year = year(dt),
+    yr = factor(format(result$dt, '%Y'), unique(year(dt)), ordered = TRUE),
+    decade = glue::glue("{format(dt - years((year(dt) %% 10)), '%Y')}'s"),
+  ) |>
+  dplyr::select(dt, c2c_pct, month, year, yr, decade)
+
+ggplot(decades, aes(month, c2c_pct, group = yr)) +
+  geom_line(aes(color = yr)) +
+  facet_wrap(~decade, ncol = 1)
+```
+
+```{r}
 dbDisconnect(con, shutdown=TRUE)
 ```
 
