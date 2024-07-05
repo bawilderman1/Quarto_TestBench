@@ -5,6 +5,8 @@ date: "6/08/2024"
 format: 
   html:
     code-fold: true
+execute:
+  echo: false
 ---
 
 ## Quarto
@@ -20,8 +22,11 @@ library(MASS)
 library(ggiraph)
 library(scales)
 library(ggthemes)
+library(lubridate)
+library(patchwork)
 filter <- dplyr::filter
 lag <- dplyr::lag
+select <- dplyr::select
 ```
 
 ```{r}
@@ -156,11 +161,67 @@ decades <- result |>
     yr = factor(format(result$dt, '%Y'), unique(year(dt)), ordered = TRUE),
     decade = glue::glue("{format(dt - years((year(dt) %% 10)), '%Y')}'s"),
   ) |>
-  dplyr::select(dt, c2c_pct, month, year, yr, decade)
+  dplyr::select(dt, ytd_pct, month, year, yr, decade)
 
-ggplot(decades, aes(month, c2c_pct, group = yr)) +
+ggplot(decades, aes(month, ytd_pct, group = yr)) +
   geom_line(aes(color = yr)) +
   facet_wrap(~decade, ncol = 1)
+```
+
+### YTD Returns by Decade
+
+Annual Percentage Returns.
+
+```{r, message=FALSE, results='hide', echo=FALSE}
+#| warning: false
+
+# TODO: make custom color scheme for 10 variables
+decades_split <- decades |>
+  nest(.by = decade) |>
+  mutate(plot = map2(decade, data,  function (.x,.y) {
+    ggplot(data = .y, aes(x =  month, y = ytd_pct, group = yr)) +
+      geom_line(aes(color = yr)) +
+      geom_hline(aes(yintercept = 0), color = "black", alpha = 0.5, linetype = "dashed") +
+      theme_bw() +
+      scale_color_tableau(palette = "Classic Cyclic") +
+      ggtitle(label = .x) +
+      scale_y_continuous(labels = scales::percent_format()) +
+      labs(x = NULL, y = "YTD %", color = NULL)
+      #+ theme(aspect.ratio=1/4)
+  }))
+
+#decades_split$plot[[1]] / decades_split$plot[[2]] / decades_split$plot[[3]] + plot_layout(axis_titles = "collect", heights = c(4, 4, 4))
+#print(decades_split$plot)
+decades_split$plot
+```
+
+```{r}
+annual_high_low <- result |>
+  filter(high_row == 1 | low_row == 1) |>
+  mutate(
+    month = factor(format(dt, "%b"), month.abb, ordered = TRUE),
+    high_low = factor(ifelse(high_row == 1, "High", "Low"), levels = c("Low", "High")),
+    yr_up_down = factor(ifelse(yr_dir == 1, "Up", "Down"), levels = c("Up", "Down"))
+  ) |>
+  select(dt, month, yr_up_down, high_low)
+
+#high_low_colors <- brewer_pal(3, "Set1")
+
+ggplot(annual_high_low, aes(month)) +
+  geom_bar(aes(fill = high_low)) +
+  scale_fill_manual(values = c("#E41A1C", "#4DAF4A")) +
+  theme_bw() +
+  theme(
+    axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5),
+    legend.position = "bottom",
+    strip.background=element_rect(colour="black", fill="white")) +
+  labs(
+    title = "Count of Lows & Highs by Month",
+    subtitle = "Up vs. Down Years",
+    x = NULL, 
+    y = NULL, 
+    fill = NULL) +
+  facet_grid(yr_up_down ~ high_low, scales = "free_y")
 ```
 
 ```{r}
