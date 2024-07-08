@@ -225,6 +225,73 @@ ggplot(annual_high_low, aes(month)) +
 ```
 
 ```{r}
+bartype_sum <- ggplot(result |>
+  group_by(bar_type) |>
+  summarize_at("c2c_pct", sum, na.rm=TRUE),
+  aes(x=bar_type, weight= c2c_pct, fill = bar_type)) +
+  geom_bar(na.rm = TRUE) +
+  scale_x_discrete(labels = NULL, breaks = NULL, guide = guide_axis(n.dodge = 0)) +
+  scale_y_continuous(labels = scales::percent_format()) +
+  labs(subtitle = "Sum of % Returns by Bar Type", x = NULL, y = NULL, fill = NULL) +
+  scale_fill_brewer(palette = "Set1") +
+  theme_hc()
+
+bartype_cnt <- ggplot(result |> select(bar_type), aes(bar_type, fill = bar_type)) +
+  geom_bar(na.rm = TRUE) +
+  scale_x_discrete(labels = NULL, breaks = NULL, guide = guide_axis(n.dodge = 0)) +
+  labs(subtitle = "Count of Bar Type", x = NULL, y = NULL, fill = NULL) +
+  scale_fill_brewer(palette = "Set1") +
+  theme_hc()
+
+bartype_distr <- ggplot(result |> select(bar_type, c2c_pct), aes(x = bar_type, y = c2c_pct)) +
+  geom_jitter(
+    width = 0.35, 
+    aes(color = bar_type), 
+    alpha = 0.7,
+    show.legend = FALSE,
+    na.rm = TRUE) +
+  geom_boxplot(
+    show.legend = FALSE, 
+    outlier.shape = NA, 
+    aes(fill = bar_type), 
+    alpha = 0.0,
+    fatten = 1,
+    lwd = 0.75,
+    na.rm = TRUE) +
+  scale_x_discrete(labels = NULL, breaks = NULL, guide = guide_axis(n.dodge = 0)) +
+  scale_y_continuous(labels = scales::percent_format()) +
+  labs(
+    subtitle = "Distribution (%) of Returns by Bar Type", 
+    x = NULL, 
+    y = NULL, 
+    color = NULL) +
+  scale_color_brewer(palette = "Set1") +
+  theme_hc()
+
+((bartype_distr + (bartype_cnt / bartype_sum)) / guide_area()) + 
+  plot_layout(guides = "collect", heights = c(4,1))
+```
+
+```{r}
+barTypeBreakdown <- dbGetQuery(
+  con,
+  "WITH factors_cte AS (
+      SELECT m.*, 
+      	fc.* EXCLUDE (dt),
+      FROM spy_monthly m
+      	LEFT JOIN spy_monthly_factorcalcs fc ON m.dt = fc.dt
+      ORDER BY m.dt
+  )
+  -- sum c2c percents for each bar type
+  select bar_type, 
+    count(c2c_pct) as cnt, 
+    sum(c2c_pct) as sum_c2c_pct, 
+    quantile_cont(c2c_pct, [0.25, 0.5, 0.75]) as c2c_pct_dist,
+  from factors_cte
+  group by bar_type;")
+```
+
+```{r}
 dbDisconnect(con, shutdown=TRUE)
 ```
 
