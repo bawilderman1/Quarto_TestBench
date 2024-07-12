@@ -24,6 +24,7 @@ library(scales)
 library(ggthemes)
 library(lubridate)
 library(patchwork)
+library(RColorBrewer)
 filter <- dplyr::filter
 lag <- dplyr::lag
 select <- dplyr::select
@@ -154,6 +155,8 @@ ggplot(result, aes(x = factor(yr_dir), y = c2c_pct)) +
 ```
 
 ```{r}
+#| fig-width: 10
+#| fig-height: 20
 decades <- result |>
   mutate(
     month = factor(format(result$dt, "%b"), month.abb, ordered = TRUE),
@@ -165,7 +168,9 @@ decades <- result |>
 
 ggplot(decades, aes(month, ytd_pct, group = yr)) +
   geom_line(aes(color = yr)) +
-  facet_wrap(~decade, ncol = 1)
+  geom_hline(aes(yintercept = 0), color = "black", alpha = 0.5, linetype = "dashed") +
+  theme_bw() +
+  facet_wrap(~decade, ncol = 1, scales = "free_y")
 ```
 
 ### YTD Returns by Decade
@@ -282,13 +287,58 @@ barTypeBreakdown <- dbGetQuery(
       	LEFT JOIN spy_monthly_factorcalcs fc ON m.dt = fc.dt
       ORDER BY m.dt
   )
-  -- sum c2c percents for each bar type
-  select bar_type, 
-    count(c2c_pct) as cnt, 
-    sum(c2c_pct) as sum_c2c_pct, 
-    quantile_cont(c2c_pct, [0.25, 0.5, 0.75]) as c2c_pct_dist,
+  select round(open_prev_rng, 1) as open_prev_rng, 
+  	count(o2c_pct) as cnt, 
+  	sum(o2c_pct) as sum_o2c_pct, 
+  	quantile_cont(o2c_pct, [0.25, 0.5, 0.75]) as o2c_pct_dist,
   from factors_cte
-  group by bar_type;")
+  where open_prev_rng is not null
+  group by round(open_prev_rng, 1)
+  order by round(open_prev_rng, 1) desc;")
+```
+
+```{r}
+#result |>
+#  group_by(open_prev_rng = round(open_prev_rng, 1),
+#           opr_pct = factor(label_percent()(round(open_prev_rng, 1)), ordered = TRUE)) |>
+#  summarize_at("c2c_pct", sum, na.rm=TRUE) |>
+#  arrange(open_prev_rng)
+
+result |>
+  filter(!is.na(open_prev_rng)) |>
+  mutate(opr_rnd = round(open_prev_rng, 1)) |>
+  arrange(opr_rnd) |>
+  group_by(opr_fctr = factor(
+    percent(opr_rnd),
+    levels = percent(unique(opr_rnd)),
+    ordered = TRUE)) |>
+  summarize_at("c2c_pct", sum, na.rm=TRUE)
+```
+
+```{r}
+fills <- c(sapply(c("Set1", "Set2"), function(x) brewer.pal(8, x)))
+
+ggplot(result |>
+  filter(!is.na(open_prev_rng)) |>
+  mutate(opr_rnd = round(open_prev_rng, 1)) |>
+  arrange(opr_rnd) |>
+  group_by(opr_fctr = factor(
+    percent(opr_rnd),
+    levels = percent(unique(opr_rnd)),
+    ordered = TRUE)) |>
+  summarize_at("c2c_pct", sum, na.rm=TRUE),
+  aes(x=opr_fctr, weight= c2c_pct, fill = opr_fctr)) +
+  geom_bar(na.rm = TRUE) +
+  #scale_x_discrete(labels = NULL, breaks = NULL, guide = guide_axis(n.dodge = 0)) +
+  scale_y_continuous(labels = scales::percent_format()) +
+  labs(
+    subtitle = "Sum of % Returns by Open Price as % of Prev. Range", 
+    x = NULL, 
+    y = NULL, 
+    fill = NULL) +
+  scale_fill_manual(values = fills) +
+  theme_hc() + 
+  guides(fill = guide_legend(ncol = 7, byrow = TRUE))
 ```
 
 ```{r}
