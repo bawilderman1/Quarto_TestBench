@@ -299,26 +299,33 @@ barTypeBreakdown <- dbGetQuery(
 
 ```{r}
 #result |>
-#  group_by(open_prev_rng = round(open_prev_rng, 1),
-#           opr_pct = factor(label_percent()(round(open_prev_rng, 1)), ordered = TRUE)) |>
-#  summarize_at("c2c_pct", sum, na.rm=TRUE) |>
-#  arrange(open_prev_rng)
+#  filter(!is.na(open_prev_rng)) |>
+#  mutate(opr_rnd = round(open_prev_rng, 1)) |>
+#  arrange(opr_rnd) |>
+#  group_by(opr_fctr = factor(
+#    percent(opr_rnd),
+#    levels = percent(unique(opr_rnd)),
+#    ordered = TRUE)) |>
+#  summarize_at("c2c_pct", sum, na.rm=TRUE)
 
 result |>
   filter(!is.na(open_prev_rng)) |>
   mutate(opr_rnd = round(open_prev_rng, 1)) |>
   arrange(opr_rnd) |>
-  group_by(opr_fctr = factor(
+  mutate(opr_fctr = factor(
     percent(opr_rnd),
     levels = percent(unique(opr_rnd)),
     ordered = TRUE)) |>
-  summarize_at("c2c_pct", sum, na.rm=TRUE)
+  select(opr_rnd, opr_fctr, c2c_pct)
 ```
 
 ```{r}
+#| fig-width: 10
+#| fig-height: 12
+
 fills <- c(sapply(c("Set1", "Set2"), function(x) brewer.pal(8, x)))
 
-ggplot(result |>
+prev_rng_sum <- ggplot(result |>
   filter(!is.na(open_prev_rng)) |>
   mutate(opr_rnd = round(open_prev_rng, 1)) |>
   arrange(opr_rnd) |>
@@ -329,7 +336,7 @@ ggplot(result |>
   summarize_at("c2c_pct", sum, na.rm=TRUE),
   aes(x=opr_fctr, weight= c2c_pct, fill = opr_fctr)) +
   geom_bar(na.rm = TRUE) +
-  #scale_x_discrete(labels = NULL, breaks = NULL, guide = guide_axis(n.dodge = 0)) +
+  scale_x_discrete(labels = NULL, breaks = NULL, guide = guide_axis(n.dodge = 0)) +
   scale_y_continuous(labels = scales::percent_format()) +
   labs(
     subtitle = "Sum of % Returns by Open Price as % of Prev. Range", 
@@ -339,6 +346,61 @@ ggplot(result |>
   scale_fill_manual(values = fills) +
   theme_hc() + 
   guides(fill = guide_legend(ncol = 7, byrow = TRUE))
+
+prev_rng_cnt <- ggplot(result |>
+    filter(!is.na(open_prev_rng)) |>
+    mutate(opr_rnd = round(open_prev_rng, 1)) |>
+    arrange(opr_rnd) |>
+    mutate(opr_fctr = factor(
+      percent(opr_rnd),
+      levels = percent(unique(opr_rnd)),
+      ordered = TRUE)) |>
+    select(opr_rnd, opr_fctr), 
+    aes(opr_fctr, fill = opr_fctr)) +
+  geom_bar(na.rm = TRUE) +
+  scale_x_discrete(labels = NULL, breaks = NULL, guide = guide_axis(n.dodge = 0)) +
+  labs(subtitle = "Count of Open Price as % of Prev. Range", x = NULL, y = NULL, fill = NULL) +
+  scale_fill_manual(values = fills) +
+  theme_hc() + 
+  guides(fill = guide_legend(ncol = 7, byrow = TRUE))
+
+prev_rng_distr <- ggplot(result |>
+  filter(!is.na(open_prev_rng)) |>
+  mutate(opr_rnd = round(open_prev_rng, 1)) |>
+  arrange(opr_rnd) |>
+  mutate(opr_fctr = factor(
+    percent(opr_rnd),
+    levels = percent(unique(opr_rnd)),
+    ordered = TRUE)) |>
+  select(opr_rnd, opr_fctr, c2c_pct), 
+  aes(x = opr_fctr, y = c2c_pct)) +
+  geom_jitter(
+    width = 0.35, 
+    aes(color = opr_fctr), 
+    alpha = 0.7,
+    show.legend = FALSE,
+    na.rm = TRUE) +
+  geom_boxplot(
+    show.legend = FALSE, 
+    outlier.shape = NA, 
+    aes(fill = opr_fctr), 
+    alpha = 0.0,
+    fatten = 1,
+    lwd = 0.75,
+    na.rm = TRUE) +
+  #scale_x_discrete(labels = NULL, breaks = NULL, guide = guide_axis(n.dodge = 0)) +
+  scale_y_continuous(labels = scales::percent_format()) +
+  labs(
+    subtitle = "Distribution (%) of Returns by Open Price as % of Prev. Range", 
+    x = NULL, 
+    y = NULL, 
+    color = NULL) +
+  scale_color_manual(values = fills) +
+  theme_hc() + 
+  guides(fill = guide_legend(ncol = 7, byrow = TRUE))
+
+prev_rng_cnt / prev_rng_sum / prev_rng_distr / guide_area() + 
+  plot_layout(guides = "collect", heights = c(2, 2, 4 ,1))
 ```
 
 ```{r}
