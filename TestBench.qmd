@@ -404,6 +404,110 @@ prev_rng_cnt / prev_rng_sum / prev_rng_distr / guide_area() +
 ```
 
 ```{r}
+# Candlestick Chart -----
+
+#' @rdname geom_chart
+#' @export
+geom_candlestick <- function(
+    mapping = NULL, data = NULL, stat = "identity",
+    position = "identity", na.rm = TRUE, show.legend = NA,
+    inherit.aes = TRUE,
+    colour_up = "darkblue", colour_down = "red",
+    fill_up = "darkblue", fill_down = "red",
+    ...) {
+
+    linerange <- ggplot2::layer(
+        stat = StatLinerangeBC, 
+        geom = GeomLinerangeBC, 
+        data = data, 
+        mapping = mapping,
+        position = position, 
+        show.legend = show.legend, 
+        inherit.aes = inherit.aes,
+        params = list(na.rm = na.rm, fill_up = fill_up, fill_down = fill_down,
+          colour_up = colour_up, colour_down = colour_down, ...)
+    )
+
+    rect <- ggplot2::layer(
+        stat = StatRectCS, geom = GeomRectCS, data = data, mapping = mapping,
+        position = position, show.legend = show.legend, inherit.aes = inherit.aes,
+        params = list(na.rm = na.rm, fill_up = fill_up, fill_down = fill_down,
+                      colour_up = colour_up, colour_down = colour_down, ...)
+    )
+
+    list(linerange, rect)
+}
+
+GeomLinerangeBC <- ggplot2::ggproto(
+  "GeomLinerangeBC", 
+  ggplot2::GeomLinerange,
+  default_aes = ggplot2::aes(
+    linewidth = 0.5,
+    linetype = 1,
+    alpha = NA))
+
+StatLinerangeBC <- ggplot2::ggproto(
+  "StatLinerangeBC", 
+  ggplot2::Stat,
+  required_aes = c("x", "open", "high", "low", "close"),
+  dropped_aes = c("open", "high", "low", "close", "y"),
+  compute_group = function(
+    data, scales, params,
+    fill_up, fill_down,
+    colour_up, colour_down) {
+  
+      data <-  data %>%
+          dplyr::mutate(color = ifelse(open < close, colour_up, colour_down))
+  
+      tibble::tibble(
+        x = data$x,
+        ymin = data$low,
+        ymax = data$high,
+        colour = data$color)
+  })
+
+StatRectCS <- ggplot2::ggproto(
+  "StatRectCS", 
+  ggplot2::Stat,
+  required_aes = c("x", "open", "high", "low", "close"),
+  dropped_aes = c("open", "high", "low", "close", "x", "y"),
+  compute_group = function(data, scales, params,
+     fill_up, fill_down,
+     colour_up, colour_down) {
+  
+        data <-  data %>%
+          dplyr::mutate(
+            fill = ifelse(open < close, fill_up, fill_down),
+            ymin = ifelse(open < close, open, close),
+            ymax = ifelse(open < close, close, open))
+    
+        tibble::tibble(
+          xmin = data$x - 0.45,
+          xmax = data$x + 0.45,
+          ymin = data$ymin,
+          ymax = data$ymax,
+          fill = data$fill)
+  })
+
+GeomRectCS <- ggplot2::ggproto(
+  "GeomRectCS", 
+  ggplot2::GeomRect,
+  default_aes = ggplot2::aes(
+    colour = NA,
+    linewidth = 0.5,
+    linetype = 1,
+    alpha = NA))
+```
+
+```{r}
+ggplot(result |> dplyr::filter(dt >= "2015-01-01" & dt <= "2015-06-01"),
+       aes(x = dt, y = close)) +
+  geom_candlestick(aes(open = open, high = high, low = low, close = close)) +
+  labs(title = "Candle Test", y = "Closing Price", x = "") +
+  theme_bw()
+```
+
+```{r}
 dbDisconnect(con, shutdown=TRUE)
 ```
 
