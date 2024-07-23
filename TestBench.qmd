@@ -500,7 +500,53 @@ GeomRectCS <- ggplot2::ggproto(
 ```
 
 ```{r}
-ggplot(result |> dplyr::filter(dt >= "2015-01-01" & dt <= "2015-06-01"),
+#https://stackoverflow.com/questions/72246317/can-i-choose-the-fill-based-on-the-color
+#ggplot(d, 
+#  aes(x, y, color = category, 
+#    fill = stage(p, 
+#      after_scale = ifelse(fill == "white", fill, color)))) + 
+#  geom_point(shape = "circle filled") + 
+#  scale_fill_manual(values = c("TRUE" = "white", "FALSE" = "black"))
+
+daySubset |>
+  mutate(condition = ifelse(close == 204.97, TRUE, FALSE))
+```
+
+```{r}
+#myCandle <- function(x, open, high, low, close, ...) {
+#  geom_linerange(aes(x = x, ymin = ifelse(close > open, close, open), ymax = high))
+#}
+
+ggplot(daySubset |> mutate(condition = ifelse(close == 204.97 | close == 201.99, TRUE, FALSE)),
+       aes(x = dt, y = close)) +
+  geom_linerange(#data = daySubset, 
+    mapping = aes(x = dt, ymin = ifelse(close > open, close, open), ymax = high, color = condition)) +
+  geom_rect(#data = daySubset, 
+    mapping = aes(
+      xmin = dt - 0.3, 
+      xmax = dt + 0.3, 
+      ymin = ifelse(close > open, open, close), 
+      ymax = ifelse(close > open, close, open),
+      alpha = ifelse(close > open, "up", "down"),
+      color = condition,
+      fill = after_scale(color))#, 
+    #color = "black",
+    #fill = "black"
+    ) +
+  geom_linerange(#data = daySubset, 
+    mapping = aes(x = dt, ymin = low, ymax = ifelse(close > open, open, close), color = condition)) +
+  scale_alpha_discrete(range = c(1, 0), guide = "none") +
+  scale_color_manual(values = c("black", "orange")) +
+  theme_bw() +
+  labs(title = "Candlestick Example", color = "Condition")
+  #myCandle(x = dt, open = open, high = high, low = low, close = close)
+```
+
+```{r}
+#daySubset <- dbGetQuery(con,
+#  "SELECT * FROM spy_1d_adj WHERE dt BETWEEN '2015-01-15' AND '2015-01-30'")
+
+ggplot(daySubset,
        aes(x = dt, y = close)) +
   geom_candlestick(aes(open = open, high = high, low = low, close = close)) +
   labs(title = "Candle Test", y = "Closing Price", x = "") +
