@@ -543,6 +543,64 @@ ggplot(daySubset |> mutate(condition = ifelse(close == 204.97 | close == 201.99,
 ```
 
 ```{r}
+geom_candle <- function(
+    x = NULL, 
+    o = NULL, 
+    h = NULL, 
+    l = NULL, 
+    c = NULL, 
+    bodyWidth = 0.3, 
+    ...) {
+  list(
+    geom_linerange(
+      mapping = aes(
+        x = {{ x }},
+        ymin = ifelse({{ c }} > {{ o }}, {{ c }}, {{ o }}),
+        ymax = {{ h }},
+        ...
+      )
+    ),
+    geom_rect(
+      mapping = aes(
+        xmin = {{ x }} - {{ bodyWidth}},
+        xmax = {{ x }} + {{ bodyWidth}},
+        ymin = ifelse({{ c }} > {{ o }}, {{ o }}, {{ c }}),
+        ymax = ifelse({{ c }} > {{ o }}, {{ c }}, {{ o }}),
+        alpha = ifelse({{ c }} > {{ o }}, "up", "down"),
+        fill = after_scale(color),
+        ...
+      )
+    ),
+    geom_linerange(
+      mapping = aes(
+        x = {{ x }},
+        ymin = {{ l }},
+        ymax = ifelse({{ c }} > {{ o }}, {{ o }}, {{ c }}),
+        ...
+      )
+    ),
+    scale_alpha_discrete(range = combine(1, 0), guide = "none")
+  )
+}
+```
+
+```{r}
+ggplot(daySubset |> 
+  mutate(condition = ifelse(
+    close == 204.97 | close == 201.99, TRUE, FALSE
+  )
+),
+  aes(x = dt, y = close)) +
+  geom_candle(
+    x = dt, o = open, h = high, l = low, c = close,
+    color = condition
+  ) +
+  scale_color_manual(values = c("black", "orange")) +
+  theme_bw() +
+  labs(title = "Candle Function Test", color = "Condition")
+```
+
+```{r}
 #daySubset <- dbGetQuery(con,
 #  "SELECT * FROM spy_1d_adj WHERE dt BETWEEN '2015-01-15' AND '2015-01-30'")
 
