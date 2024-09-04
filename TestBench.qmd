@@ -25,6 +25,7 @@ library(ggthemes)
 library(lubridate)
 library(patchwork)
 library(RColorBrewer)
+library(PerformanceAnalytics)
 filter <- dplyr::filter
 lag <- dplyr::lag
 select <- dplyr::select
@@ -612,11 +613,67 @@ ggplot(daySubset,
 ```
 
 ```{r}
+fedMtgs <- dbGetQuery(
+  con,
+  "-- Fed Meetings
+WITH fed_mtg_cte AS	(
+	SELECT ROW_NUMBER() OVER() AS mtg_nbr, start_dt, end_dt
+	FROM main.fomc_dates
+	WHERE start_dt > '1993-01-29' AND end_dt < '2024-01-01'
+), norm_spy_1d_cte AS (
+	SELECT ROW_NUMBER()OVER() AS row_num, dt, open, high, low, close
+	FROM main.spy_1d_adj
+), norm_fed_mtg_cte AS (
+	SELECT m.*, sd.row_num AS start_row, ed.row_num AS end_row
+	FROM fed_mtg_cte m
+		LEFT JOIN norm_spy_1d_cte sd ON m.start_dt = sd.dt
+		LEFT JOIN norm_spy_1d_cte ed ON m.end_dt = ed.dt
+)
+	SELECT m.mtg_nbr, m.start_dt, m.end_dt, m.start_row, m.end_row, d.row_num, 
+		CASE WHEN end_row > start_row AND row_num == end_row THEN 0.5
+			WHEN row_num <= start_row THEN row_num - first_value(start_row) OVER(PARTITION BY mtg_nbr) 
+			ELSE row_num - last_value(end_row) OVER(PARTITION BY mtg_nbr) END AS mtg_dt_offset,
+		d.dt, d.open, d.high, d.low, d.close, 
+		s.chg, s.yr_dir, s.yr_pct 
+	FROM norm_fed_mtg_cte m
+		JOIN norm_spy_1d_cte d ON d.row_num BETWEEN m.start_row -1 AND m.end_row + 1
+		JOIN main.spy_1d_agg_stats s ON d.dt = s.dt
+	ORDER BY d.dt;")
+```
+
+```{r}
+ggplot(fedMtgs |> 
+  mutate(condition = ifelse(
+    dplyr::between(mtg_dt_offset, 0, 1), TRUE, FALSE
+  )
+),
+  aes(x = dt, y = close)) +
+  geom_candle(
+    x = dt, o = open, h = high, l = low, c = close,
+    color = condition
+  ) +
+  scale_color_manual(values = c("black", "orange")) +
+  theme_bw() +
+  labs(title = "Fed Meetings", color = "Mtg Days") +
+  facet_wrap(~mtg_nbr, scales = "free_y")
+```
+
+```{r}
 dbDisconnect(con, shutdown=TRUE)
 ```
 
 ```{r}
 library(dlookr)
+```
+
+```{r}
+data("managers")
+#head(managers[,1,drop=FALSE])
+#head(managers)
+PerformanceAnalytics::SharpeRatio(
+  managers[,1,drop=FALSE], 
+  Rf = .35/12, 
+  FUN = "StdDev")
 ```
 
 ```{r}
