@@ -26,6 +26,8 @@ library(lubridate)
 library(patchwork)
 library(RColorBrewer)
 library(PerformanceAnalytics)
+library(slider)
+library(tsbox)
 filter <- dplyr::filter
 lag <- dplyr::lag
 select <- dplyr::select
@@ -643,8 +645,9 @@ WITH fed_mtg_cte AS	(
 
 ```{r}
 ggplot(fedMtgs |> 
+  dplyr::filter(lubridate::year(dt) %in% c(2020)) |>
   mutate(condition = ifelse(
-    dplyr::between(mtg_dt_offset, 0, 1), TRUE, FALSE
+    dplyr::between(mtg_dt_offset, 0, 0.5), TRUE, FALSE
   )
 ),
   aes(x = dt, y = close)) +
@@ -655,7 +658,39 @@ ggplot(fedMtgs |>
   scale_color_manual(values = c("black", "orange")) +
   theme_bw() +
   labs(title = "Fed Meetings", color = "Mtg Days") +
-  facet_wrap(~mtg_nbr, scales = "free_y")
+  facet_wrap(~mtg_nbr, scales = "free")
+```
+
+```{r}
+fedMtgs |>
+  dplyr::filter(lubridate::year(dt) %in% c(2018)) |>
+  mutate(condition = ifelse(
+    dplyr::between(mtg_dt_offset, 0, 1), TRUE, FALSE)
+  )
+```
+
+```{r}
+result |>
+  filter(year(dt) %in% c(2010,2011,2012,2013)) |>
+  select(dt, open, high, low, close, o2c_pct, c2c_pct) |>
+  mutate(mth_nbr = month(dt),
+         pos_size = case_when(mth_nbr < 8 ~ 1,
+                              mth_nbr > 10 ~ 1,
+                              .default = 0),
+         prev_pos_size = lag(pos_size, order_by = dt),
+         pps2 = slide_dbl(pos_size, ~.x[1], .before = 1, .complete = TRUE),
+         pos_type = case_when(pos_size > 0 ~ "LONG",
+                              pos_size < 0 ~ "SHORT",
+                              .default = "FLAT"),
+         trd_open = ifelse(pos_size > 0 & 
+                           (prev_pos_size == 0 | is.na( prev_pos_size)), 
+                           1, 0),
+         trd_close = ifelse(pos_size == 0 & prev_pos_size > 0, 1, 0),
+         trd_num = slide_sum(trd_open, before=Inf)) |>
+  group_by(trd_num) |>
+  mutate(trd_length = seq(n()),
+         trd_len2 = row_number()) |>
+  ungroup()
 ```
 
 ```{r}
