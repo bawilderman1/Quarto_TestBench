@@ -689,7 +689,9 @@ result |>
          trd_num = slide_sum(trd_open, before=Inf)) |>
   group_by(trd_num) |>
   mutate(trd_length = seq(n()),
-         trd_len2 = row_number()) |>
+         trd_len2 = row_number(),
+         max_ur_drawdn = round(log(low / slide_max(high, before=Inf)),4),
+         max_r_drawdn = round(log(close / slide_max(close, before=Inf)), 4)) |>
   ungroup()
 ```
 
