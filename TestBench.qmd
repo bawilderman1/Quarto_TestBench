@@ -31,6 +31,7 @@ library(tsbox)
 filter <- dplyr::filter
 lag <- dplyr::lag
 select <- dplyr::select
+first <- dplyr::first
 ```
 
 ```{r}
@@ -670,9 +671,14 @@ fedMtgs |>
 ```
 
 ```{r}
+init_eqty <- 10000
+
 result |>
   filter(year(dt) %in% c(2010,2011,2012,2013)) |>
-  select(dt, open, high, low, close, o2c_pct, c2c_pct) |>
+  mutate(rn = row_number(),
+         cash_delta =  ifelse(rn == 1, init_eqty, 0),
+         cash = slide_sum(cash_delta, before=Inf)) |>
+  select(rn, cash_delta, cash, dt, open, high, low, close, o2c_pct, c2c_pct) |>
   mutate(mth_nbr = month(dt),
          pos_size = case_when(mth_nbr < 8 ~ 1,
                               mth_nbr > 10 ~ 1,
@@ -691,8 +697,41 @@ result |>
   mutate(trd_length = seq(n()),
          trd_len2 = row_number(),
          max_ur_drawdn = round(log(low / slide_max(high, before=Inf)),4),
-         max_r_drawdn = round(log(close / slide_max(close, before=Inf)), 4)) |>
+         max_r_drawdn = round(log(close / slide_max(close, before=Inf)), 4),
+         trd_base = first(open) * first(pos_size)) |>
   ungroup()
+```
+
+```{r}
+dt_tst <- result |>
+  filter(year(dt) %in% c(2010)) |>
+  mutate(rn = row_number(),
+         tst_1 = 0,
+         tst_2 = 0,
+         tst_3 = 0) |>
+  select(dt, close, rn, tst_1, tst_2, tst_3)
+
+dt_tst <- slider::slide(
+  dt_tst, 
+  function(.x) 
+  {
+    a = 2
+    b = 3
+    
+    .x$tst_1 = .x$rn * a
+    .x$tst_2 =  .x$rn[1] + if_else(is.na(.x$rn[2]), 0, .x$rn[2])
+    .x$tst_3 = .x$tst_1 + b
+    
+    #print(.x)
+    return(.x)
+  }, 
+  .before = 1, 
+  .complete = FALSE) |> #Sliding window of rows to update mult cols in each row
+  purrr::map(~dplyr::slice_tail(.)) |> #Get last row from each tibble in list
+  dplyr::bind_rows() #Recombine list of tibbles into one tibble
+
+#dt_tst[1]
+dt_tst
 ```
 
 ```{r}
