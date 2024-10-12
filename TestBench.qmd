@@ -28,6 +28,7 @@ library(RColorBrewer)
 library(PerformanceAnalytics)
 library(slider)
 library(tsbox)
+library(purrr)
 filter <- dplyr::filter
 lag <- dplyr::lag
 select <- dplyr::select
@@ -671,6 +672,44 @@ fedMtgs |>
 ```
 
 ```{r}
+bt_tst <- result |>
+  filter(year(dt) %in% c(2010)) |>
+  mutate(rn = row_number(),
+         mth_nbr = month(dt),
+         trd_entry = ifelse((mth_nbr == 1 | mth_nbr == 10), 1, 0),
+         trd_exit = ifelse(mth_nbr == 8, 1, 0),
+         pos_size = 0,
+         pos_val = 0,
+         cash = 0,
+         eqty = 0) |>
+  select(
+    dt, open, close, rn, mth_nbr, 
+    trd_entry, trd_exit, pos_size, pos_val, cash, eqty)
+
+bt_tst <- slider::slide(
+  bt_tst, 
+  function(.x) 
+  {
+    a = 2
+    b = 3
+    
+    .x$pos_size = .x$rn * a
+    .x$pos_val =  .x$rn[1] + if_else(is.na(.x$rn[2]), 0, .x$rn[2])
+    .x$cash = .x$pos_size + b
+    .x$eqty = 1
+    
+    #print(.x)
+    return(.x)
+  }, 
+  .before = 1, 
+  .complete = FALSE) |> #Sliding window of rows to update mult cols in each row
+  purrr::map(~dplyr::slice_tail(.)) |> #Get last row from each tibble in list
+  dplyr::bind_rows() #Recombine list of tibbles into one tibble
+
+bt_tst
+```
+
+```{r}
 init_eqty <- 10000
 
 result |>
@@ -703,7 +742,7 @@ result |>
 ```
 
 ```{r}
-dt_tst <- result |>
+bt_tst <- result |>
   filter(year(dt) %in% c(2010)) |>
   mutate(rn = row_number(),
          tst_1 = 0,
@@ -711,27 +750,25 @@ dt_tst <- result |>
          tst_3 = 0) |>
   select(dt, close, rn, tst_1, tst_2, tst_3)
 
-dt_tst <- slider::slide(
-  dt_tst, 
-  function(.x) 
-  {
-    a = 2
-    b = 3
-    
-    .x$tst_1 = .x$rn * a
-    .x$tst_2 =  .x$rn[1] + if_else(is.na(.x$rn[2]), 0, .x$rn[2])
-    .x$tst_3 = .x$tst_1 + b
-    
-    #print(.x)
-    return(.x)
-  }, 
-  .before = 1, 
-  .complete = FALSE) |> #Sliding window of rows to update mult cols in each row
-  purrr::map(~dplyr::slice_tail(.)) |> #Get last row from each tibble in list
-  dplyr::bind_rows() #Recombine list of tibbles into one tibble
+bt_tst
+```
 
-#dt_tst[1]
-dt_tst
+```{r}
+bt_tst2 <- bt_tst |> 
+  split(row(bt_tst)[, 1])
+
+purrr::map2(
+  bt_tst2,
+  seq_along(bt_tst2),
+  \(.x, .y)
+  {
+    p <- as.integer(.y - 1)
+    .x$tst_1 = ifelse(.y > 1, bt_tst2[[p]]$rn, NA)
+    .x$tst_2 = ifelse(.y > 1, .x$tst_1 + 10, NA)
+
+    return(as.tibble(.x))
+  }) |>
+  dplyr::bind_rows()
 ```
 
 ```{r}
