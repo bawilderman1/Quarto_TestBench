@@ -673,10 +673,10 @@ fedMtgs |>
 
 ```{r}
 bt_tst <- result |>
-  filter(year(dt) %in% c(2010)) |>
+  filter(year(dt) %in% c(2010:2015)) |>
   mutate(rn = row_number(),
          mth_nbr = month(dt),
-         trd_entry = ifelse((mth_nbr == 1 | mth_nbr == 10), 1, 0),
+         trd_entry = ifelse((mth_nbr == 10 | (mth_nbr == 1 & rn == 1)), 1, 0),
          trd_exit = ifelse(mth_nbr == 8, 1, 0),
          pos_size = 0,
          pos_val = 0,
@@ -685,90 +685,75 @@ bt_tst <- result |>
   select(
     dt, open, close, rn, mth_nbr, 
     trd_entry, trd_exit, pos_size, pos_val, cash, eqty)
-
-bt_tst <- slider::slide(
-  bt_tst, 
-  function(.x) 
-  {
-    a = 2
-    b = 3
-    
-    .x$pos_size = .x$rn * a
-    .x$pos_val =  .x$rn[1] + if_else(is.na(.x$rn[2]), 0, .x$rn[2])
-    .x$cash = .x$pos_size + b
-    .x$eqty = 1
-    
-    #print(.x)
-    return(.x)
-  }, 
-  .before = 1, 
-  .complete = FALSE) |> #Sliding window of rows to update mult cols in each row
-  purrr::map(~dplyr::slice_tail(.)) |> #Get last row from each tibble in list
-  dplyr::bind_rows() #Recombine list of tibbles into one tibble
-
-bt_tst
 ```
 
 ```{r}
 init_eqty <- 10000
 
-result |>
-  filter(year(dt) %in% c(2010,2011,2012,2013)) |>
-  mutate(rn = row_number(),
-         cash_delta =  ifelse(rn == 1, init_eqty, 0),
-         cash = slide_sum(cash_delta, before=Inf)) |>
-  select(rn, cash_delta, cash, dt, open, high, low, close, o2c_pct, c2c_pct) |>
-  mutate(mth_nbr = month(dt),
-         pos_size = case_when(mth_nbr < 8 ~ 1,
-                              mth_nbr > 10 ~ 1,
-                              .default = 0),
-         prev_pos_size = lag(pos_size, order_by = dt),
-         pps2 = slide_dbl(pos_size, ~.x[1], .before = 1, .complete = TRUE),
-         pos_type = case_when(pos_size > 0 ~ "LONG",
-                              pos_size < 0 ~ "SHORT",
-                              .default = "FLAT"),
-         trd_open = ifelse(pos_size > 0 & 
-                           (prev_pos_size == 0 | is.na( prev_pos_size)), 
-                           1, 0),
-         trd_close = ifelse(pos_size == 0 & prev_pos_size > 0, 1, 0),
-         trd_num = slide_sum(trd_open, before=Inf)) |>
-  group_by(trd_num) |>
-  mutate(trd_length = seq(n()),
-         trd_len2 = row_number(),
-         max_ur_drawdn = round(log(low / slide_max(high, before=Inf)),4),
-         max_r_drawdn = round(log(close / slide_max(close, before=Inf)), 4),
-         trd_base = first(open) * first(pos_size)) |>
-  ungroup()
+bt_tst2 <- bt_tst
+trd_entry_vec <- as.numeric(bt_tst2$trd_entry)
+trd_exit_vec <- as.numeric(bt_tst2$trd_exit)
+pos_size_vec <- as.numeric(bt_tst2$pos_size)
+pos_val_vec <- as.numeric(bt_tst2$pos_val)
+cash_vec <- as.numeric(bt_tst2$cash)
+eqty_vec <- as.numeric(bt_tst2$eqty)
+open_vec <- as.numeric(bt_tst2$open)
+close_vec <- as.numeric(bt_tst2$close)
+
+for (i in seq_along(bt_tst2$dt)) {
+  f_row <- i == 1
+  entry <- as.logical(trd_entry_vec[i])
+  exit <- as.logical(trd_exit_vec[i])
+  
+  if (f_row & entry) {
+    pos_size_vec[i] <- round(init_eqty / open_vec[i], 2)
+    cash_vec[i] <- 0
+  } else if (f_row & !entry) {
+    pos_size_vec[i] <- 0
+    cash_vec[i] <- init_eqty
+  } else if (entry) {
+    pos_size_vec[i] <- round(cash_vec[i - 1] / open_vec[i], 2)
+    cash_vec[i] <- 0
+  } else if (exit) {
+    pos_size_vec[i] <- 0
+    cash_vec[i] <- round(pos_size_vec[i - 1] * open_vec[i], 2)
+  } else {
+    pos_size_vec[i] <- pos_size_vec[i - 1]
+    cash_vec[i] <- cash_vec[i - 1]
+  }
+  
+  pos_val_vec[i] <- round(pos_size_vec[i] * close_vec[i], 2)
+  eqty_vec[i] <- cash_vec[i] + pos_val_vec[i]
+}
+
+bt_tst2 |>
+  select(-c(pos_size, pos_val, cash, eqty)) |>
+  add_column(pos_size = pos_size_vec,
+             pos_val = pos_val_vec,
+             cash = cash_vec,
+             eqty = eqty_vec,
+             .after = "trd_exit")
+
+rm(trd_entry_vec, trd_exit_vec, pos_size_vec, pos_val_vec,
+   cash_vec, eqty_vec, open_vec, close_vec)
 ```
 
 ```{r}
-bt_tst <- result |>
-  filter(year(dt) %in% c(2010)) |>
-  mutate(rn = row_number(),
-         tst_1 = 0,
-         tst_2 = 0,
-         tst_3 = 0) |>
-  select(dt, close, rn, tst_1, tst_2, tst_3)
-
-bt_tst
-```
-
-```{r}
-bt_tst2 <- bt_tst |> 
-  split(row(bt_tst)[, 1])
-
-purrr::map2(
-  bt_tst2,
-  seq_along(bt_tst2),
-  \(.x, .y)
-  {
-    p <- as.integer(.y - 1)
-    .x$tst_1 = ifelse(.y > 1, bt_tst2[[p]]$rn, NA)
-    .x$tst_2 = ifelse(.y > 1, .x$tst_1 + 10, NA)
-
-    return(as.tibble(.x))
-  }) |>
-  dplyr::bind_rows()
+# bt_tst2 <- bt_tst |> 
+#   split(row(bt_tst)[, 1])
+# 
+# purrr::map2(
+#   bt_tst2,
+#   seq_along(bt_tst2),
+#   \(.x, .y)
+#   {
+#     p <- as.integer(.y - 1)
+#     .x$tst_1 = ifelse(.y > 1, bt_tst2[[p]]$rn, NA)
+#     .x$tst_2 = ifelse(.y > 1, .x$tst_1 + 10, NA)
+# 
+#     return(as.tibble(.x))
+#   }) |>
+#   dplyr::bind_rows()
 ```
 
 ```{r}
