@@ -33,6 +33,7 @@ filter <- dplyr::filter
 lag <- dplyr::lag
 select <- dplyr::select
 first <- dplyr::first
+last <- dplyr::last
 ```
 
 ```{r}
@@ -746,7 +747,7 @@ for (i in seq_along(bt_tst2$dt)) {
   eqty_high_vec[i] <- round(cash_vec[i] + (pos_size_vec[i] * high_vec[i]), 2)
 }
 
-bt_tst2 |>
+bt_data <- bt_tst2 |>
   select(-c(pos_size, pos_val, cash, eqty, eqty_l, eqty_h)) |>
   add_column(pos_size = pos_size_vec,
              pos_val = pos_val_vec,
@@ -776,6 +777,33 @@ bt_tst2 |>
 rm(trd_entry_vec, trd_exit_vec, pos_size_vec, pos_val_vec,
    cash_vec, eqty_vec, eqty_low_vec, eqty_high_vec,
    open_vec, close_vec, low_vec, high_vec)
+```
+
+```{r}
+print(paste0("all months: ", as.character(nrow(bt_data))))
+print(paste0("posn months: ", as.character(nrow(bt_data |> drop_na()))))
+
+bt_data |>
+  drop_na() |>
+  group_by(trd_num) |>
+  summarise(trd_type = first(pos_type),
+            ttl_trd_len = max(trd_length),
+            trd_pnl = last(eqty) - first(trd_base),
+            trd_pnl_pct = round(log(last(eqty) / first(trd_base)), 4),
+            max_trd_drawdn = min(trd_drawdn),
+            max_ur_drawdn = min(trd_ur_drawdn))
+```
+
+```{r}
+bt_data |>
+  mutate(yr = year(dt),
+         prev_eqty = lag(eqty)) |>
+  group_by(yr) |>
+  summarise(st_eqty = if_else(is.na(first(prev_eqty)),
+                              init_eqty,
+                              first(prev_eqty)),
+            end_eqty = last(eqty),
+            max_yr_drawdn = min(drawdn))
 ```
 
 ```{r}
