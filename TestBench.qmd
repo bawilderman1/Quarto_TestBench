@@ -685,7 +685,7 @@ fedMtgs |>
 
 ```{r}
 bt_tst <- result |>
-  filter(year(dt) %in% c(2010:2015)) |>
+  filter(year(dt) %in% c(2000:2020)) |>
   mutate(rn = row_number(),
          mth_nbr = month(dt),
          trd_entry = ifelse((mth_nbr == 11 | (mth_nbr == 1 & rn == 1)), 1, 0),
@@ -800,7 +800,13 @@ bt_trd_data <- bt_data |>
             trd_pnl = last(eqty) - first(trd_base),
             trd_pnl_pct = round(log(last(eqty) / first(trd_base)), 4),
             max_trd_drawdn = min(trd_drawdn),
-            max_ur_drawdn = min(trd_ur_drawdn))
+            max_ur_drawdn = min(trd_ur_drawdn)) |>
+  mutate(wl_seq = dense_rank(trd_rslt) |> consecutive_id()) |>
+  group_by(wl_seq) |>
+  mutate(consec_win_loss = if_else(trd_rslt == "Open", NA, seq_along(wl_seq)),
+         .after = trd_rslt) |>
+  ungroup() |>
+  select(-wl_seq)
 
 bt_trd_data
 ```
@@ -815,6 +821,7 @@ bt_trd_data |>
               first(trd_rslt) == "Winner",
               max(trd_pnl),
               min(trd_pnl)),
+            max_consec_win_loss = max(consec_win_loss),
             avg_pnl = mean(trd_pnl, na.rm = TRUE),
             avg_length = mean(ttl_trd_len, na.rm = TRUE)
             )
