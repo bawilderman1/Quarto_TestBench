@@ -30,11 +30,13 @@ library(slider)
 library(tsbox)
 library(purrr)
 library(glue)
+library(gt)
 filter <- dplyr::filter
 lag <- dplyr::lag
 select <- dplyr::select
 first <- dplyr::first
 last <- dplyr::last
+area <- patchwork::area
 ```
 
 ```{r}
@@ -948,6 +950,57 @@ print(glue("Annualized Sharp: {bt_metrics$calc_anlzd_sharp}"))
 ```
 
 ```{r}
+tblA <- tribble(
+  ~colA, ~colB,
+  "A", 1,
+  "B", 2,
+  "C", 3,
+) |>
+  gt() |>
+  tab_options(table.font.size = 30, table.font.color = "purple")
+tblB <- tribble(
+  ~colC, ~colD,
+  "D", 4,
+  "E", 5,
+  "F", 6,
+) |>
+  gt() |>
+  tab_options(table.font.size = 30)
+tblC <- tribble(
+  ~colE, ~colF, ~colG, ~colH,
+  "G", 7, "J", 10,
+  "H", 8, "K", 11,
+  "I", 9, "L", 12,
+) |>
+  gt() |>
+  tab_options(table.font.size = 30)
+```
+
+```{r}
+d1 <- c(
+  area(1,1,1,2),
+  area(2,1),
+  area(2,2)
+)
+d2 <- c(
+  area(1,1),
+  area(2,1)
+)
+  
+(
+  plot_spacer() +
+  wrap_table(tblA, panel = "rows", space = "fixed") +
+  wrap_table(tblB, panel = "rows", space = "fixed") +
+  plot_layout(ncol = 2, nrow = 2, design = d1)
+) /
+(
+  wrap_table(tblC, panel = "rows", space = "free_y") +
+  plot_spacer() +
+  plot_layout(ncol = 1, nrow = 2, design = d2)
+)
+```
+
+```{r}
 # bt_tst2 <- bt_tst |> 
 #   split(row(bt_tst)[, 1])
 # 
@@ -984,10 +1037,6 @@ PerformanceAnalytics::SharpeRatio(
 ```
 
 ```{r}
-library(gt)
-library(tidyverse)
-library(glue)
-
 # Define the start and end dates for the data range
 start_date <- "2010-06-07"
 end_date <- "2010-06-14"
