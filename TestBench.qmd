@@ -31,6 +31,7 @@ library(tsbox)
 library(purrr)
 library(glue)
 library(gt)
+library(highcharter)
 filter <- dplyr::filter
 lag <- dplyr::lag
 select <- dplyr::select
@@ -1082,4 +1083,23 @@ sp500 %>%
     columns = vars(volume),
     suffixing = TRUE
   )
+```
+
+```{r}
+mnthly_spy_tmp <- result |>
+  rename(Date = dt, SPY.Open = open, SPY.High = high, SPY.Low = low, SPY.Close = close) |>
+  select(Date, SPY.Open, SPY.High, SPY.Low, SPY.Close)
+
+mnthly_spy_xts <- xts(mnthly_spy_tmp[,-1], order.by = as.POSIXct(mnthly_spy_tmp[[1]]))
+
+rm(mnthly_spy_tmp)
+```
+
+```{r}
+highchart(type = "stock") |>
+  hc_title(text = "SPY - Monthly") |>
+  hc_add_theme(hc_theme_hcrt()) |>
+  hc_yAxis(type = "logarithmic", showLastLabel = TRUE) |>
+  hc_rangeSelector(enabled = FALSE) |>
+  hc_add_series(mnthly_spy_xts, id = 1, dataGrouping = list(enabled = FALSE))
 ```
