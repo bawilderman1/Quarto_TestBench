@@ -1096,10 +1096,32 @@ rm(mnthly_spy_tmp)
 ```
 
 ```{r}
+# keys <- c("Symbol: ", "Open: ", "High: ", "Low: ", "Close: ")
+# values <- c(sprintf("{%s}", "series.name"),
+#             sprintf("{%s:.2f}",
+#                     c("point.open", "point.high", "point.low", "point.close")))
+# tool_tip <- tooltip_table(keys, values)
+
 highchart(type = "stock") |>
   hc_title(text = "SPY - Monthly") |>
   hc_add_theme(hc_theme_hcrt()) |>
   hc_yAxis(type = "logarithmic", showLastLabel = TRUE) |>
-  hc_rangeSelector(enabled = FALSE) |>
-  hc_add_series(mnthly_spy_xts, id = 1, dataGrouping = list(enabled = FALSE))
+  hc_rangeSelector(selected = 1, buttons = list(
+    list(type = 'year', count = 5, text = '5y'),
+    list(type = 'year', count = 10, text = '10y'),
+    list(type = 'year', count = 15, text = '15y'),
+    list(type = 'all', text = 'All'))) |>
+  # hc_tooltip(useHTML = TRUE,
+  #            headerFormat = "{pointer.key}",
+  #            pointFormat = tool_tip,
+  #            distance = 10) |>
+  hc_add_series(mnthly_spy_xts, 
+                id = 1, 
+                dataGrouping = list(enabled = FALSE),
+                tooltip = list(pointFormat = paste0(
+                    "Open: {point.open} <br/>",
+                    "High: {point.high} <br/>",
+                    "Low: {point.low} <br/>",
+                    "Close: {point.close} <br/>"))
+              )
 ```
