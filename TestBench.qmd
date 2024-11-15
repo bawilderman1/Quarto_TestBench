@@ -1021,6 +1021,84 @@ d2 <- c(
 ```
 
 ```{r}
+tribble(
+  ~Key, ~Group, ~All, ~Pos, ~Neg,
+  "Count", "item", 5000, 2000, 3000,
+  "Sum", "item", 50000.21, 25000.21, 25000,
+  "Average", "item", 1.00, 0.505, 0.495,
+  "First", "calculations", 0.52, NA, NA,
+  "Second", "calculations", 0.0123, NA, NA,
+) |>
+  gt(
+    rowname_col = "Key",
+    groupname_col = "Group"
+  ) |>
+  tab_header(title = html(
+    "<h3 style='margin-left: 1.5rem;'>Example Title</h3>"
+  )) |>
+  opt_align_table_header(align = "left") |>
+  opt_vertical_padding(scale = 0.5) |>
+  cols_label(Pos ~ "Winners", Neg ~ "Losers") |>
+  text_transform(
+    locations = cells_row_groups(),
+    fn = \(x) str_to_title(x)
+  ) |>
+  tab_spanner(label = "Outcome", columns = c(All, Pos, Neg)) |>
+  tab_style(
+    style = list(
+      cell_fill(color = "gray75"),
+      cell_text(size = "larger")
+    ),
+    locations = cells_row_groups(groups = everything())
+  ) |>
+  cols_add(dir = ifelse(Group == "item", "red", "forestgreen")) |>
+  cols_label(dir = "") |>
+  text_case_match(
+    "red" ~ fontawesome::fa("arrow-down"),
+    "forestgreen" ~ fontawesome::fa("arrow-up")
+  ) |>
+  tab_style(
+    style = cell_text(color = from_column("dir")),
+    locations = cells_body(columns = dir)
+  ) |>
+  tab_style(
+    style = cell_fill(color = "lightcyan"),
+    locations = cells_body(rows = Key == "Second")
+  ) |>
+  tab_style(
+    style = list(
+      cell_borders(
+        sides = c("top", "left", "bottom", "right"),
+        color = "#FF0000",
+        weight = px(1.0)
+      )
+    ),
+    locations = list(
+      cells_body(columns = Pos, rows = Key == "Sum")
+    )
+  ) |>
+  cols_width(
+    Key ~ px(100),
+    dir ~ px(30),
+    everything() ~ px(150)
+  ) |>
+  fmt_percent(
+    rows = Key %in% c("Average", "First", "Second"),
+    columns = c("All", "Pos", "Neg")
+  ) |>
+  fmt_number(
+    rows = Key %in% c("Count"),
+    columns = c("All", "Pos", "Neg"),
+    decimals = 0
+  ) |>
+  fmt_currency(
+    rows = Key %in% c("Sum"),
+    columns = c("All", "Pos", "Neg")
+  ) |>
+  sub_values(fn = \(x) is.na(x), replacement = "")
+```
+
+```{r}
 # bt_tst2 <- bt_tst |> 
 #   split(row(bt_tst)[, 1])
 # 
