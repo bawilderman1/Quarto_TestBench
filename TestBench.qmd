@@ -852,6 +852,7 @@ bt_winloss_data <- bt_trd_data |>
             avg_pnl = mean(trd_pnl, na.rm = TRUE),
             avg_length = mean(ttl_trd_len, na.rm = TRUE)
             )
+bt_winloss_data
 ```
 
 ```{r}
@@ -862,6 +863,7 @@ bt_totals_data <- bt_trd_data |>
             pct_profitable = sum(ifelse(trd_rslt == "Winner", 1, 0)) / n(),
             net_profit = sum(trd_pnl),
             avg_pnl = mean(trd_pnl, na.rm = TRUE),
+            avg_length = mean(ttl_trd_len, na.rm = TRUE),
             avg_win_loss_ratio = 
               mean(ifelse(trd_rslt == "Winner", trd_pnl, NA), na.rm = TRUE) /
               abs(mean(ifelse(trd_rslt == "Loser", trd_pnl, NA), na.rm = TRUE)),
@@ -872,6 +874,7 @@ bt_totals_data <- bt_trd_data |>
             ttl_roa_pct = sum(bt_trd_data$trd_pnl_pct),
             max_trd_drawdn_pct = min(max_trd_drawdn),
             max_cum_drawdn_pct = min(bt_data$drawdn))
+bt_totals_data
 ```
 
 ```{r}
@@ -884,6 +887,7 @@ bt_yrly_data <- bt_data |>
                               first(prev_eqty)),
             end_eqty = last(eqty),
             max_yr_drawdn = min(drawdn))
+# bt_yrly_data
 ```
 
 ```{r}
@@ -1018,6 +1022,80 @@ d2 <- c(
   plot_spacer() +
   plot_layout(ncol = 1, nrow = 2, design = d2)
 )
+```
+
+```{r}
+wnr <- bt_metrics$data_winloss |> dplyr::filter(trd_rslt == "Winner")
+lsr <- bt_metrics$data_winloss |> dplyr::filter(trd_rslt == "Loser")
+ttl <- bt_metrics$data_totals
+st_dt <- dplyr::first(bt_metrics$data_series$dt)
+end_dt <- dplyr::last(bt_metrics$data_series$dt)
+
+tribble(
+  ~RowName, ~Group, ~Totals, ~Winners, ~Losers,
+  "Trade Count", "Trade Stats", ttl$trd_cnt, wnr$trd_cnt, lsr$trd_cnt,
+  "Profit & Loss", "Trade Stats", ttl$net_profit, wnr$gross_pnl, lsr$gross_pnl,
+  "Avg P&L", "Trade Stats", ttl$avg_pnl, wnr$avg_pnl, lsr$avg_pnl,
+  "Avg Bars", "Trade Stats", ttl$avg_length, wnr$avg_length, lsr$avg_length,
+  "Max Consecutive", "Trade Stats", NA, wnr$max_consec_win_loss, lsr$max_consec_win_loss,
+  "Max Amount", "Trade Stats", NA, wnr$max_win_loss, lsr$max_win_loss,
+  "Profitable", "Summary Stats", ttl$pct_profitable, NA, NA,
+  "ROA", "Summary Stats", ttl$ttl_roa_pct, NA, NA,
+  "Max Trade DD", "Summary Stats", ttl$max_trd_drawdn_pct, NA, NA,
+  "Max Cumul. DD", "Summary Stats", ttl$max_cum_drawdn_pct, NA, NA,
+  "Profit Factor", "Summary Stats", ttl$profit_factor, NA, NA,
+  "CAGR", "Summary Stats", bt_metrics$calc_cagr, NA, NA,
+  "MAR", "Summary Stats", bt_metrics$calc_mar, NA, NA,
+  "CALMAR", "Summary Stats", bt_metrics$calc_calmar, NA, NA,
+  "Sharpe", "Summary Stats", bt_metrics$calc_sharp, NA, NA,
+  "Ann. Sharpe", "Summary Stats", bt_metrics$calc_anlzd_sharp, NA, NA,
+  "Total Months", "Misc. Stats", nrow(bt_metrics$data_series), NA, NA,
+  "Trade Months", "Misc. Stats", nrow((bt_metrics$data_series) |> drop_na()), NA, NA,
+  "Time in Market", "Misc. Stats", bt_metrics$calc_time_in_mkt, NA, NA,
+) |>
+  gt(
+    rowname_col = "RowName",
+    groupname_col = "Group"
+  ) |>
+  tab_header(title = "Backtest Results (SPY)",
+    subtitle = glue::glue("{st_dt} to {end_dt} (Monthly)")) |>
+  opt_align_table_header(align = "left") |>
+  opt_vertical_padding(scale = 0.5) |>
+  tab_footnote(footnote = "*All Dividends are Reinvested") |>
+  cols_width(
+    RowName ~ px(150),
+    everything() ~ px(150)
+  ) |>
+  tab_style(
+    style = list(
+      cell_fill(color = "#ececec"),
+      cell_text(size = "larger")
+    ),
+    locations = cells_row_groups(groups = everything())
+  ) |>
+  fmt_percent(
+    rows = RowName %in% c("Profitable", "ROA", "CAGR", "Time in Market", "Max Trade DD", "Max Cumul. DD"),
+    columns = c("Totals", "Winners", "Losers"),
+    accounting = TRUE
+  ) |>
+  fmt_number(
+    rows = RowName %in% c("Trade Count", "Max Consecutive", "Total Months", "Trade Months"),
+    columns = c("Totals", "Winners", "Losers"),
+    decimals = 0
+  ) |>
+  fmt_number(
+    rows = RowName %in% c("Avg Bars", "Profit Factor", "MAR", "CALMAR", "Sharpe", "Ann. Sharpe"),
+    columns = c("Totals", "Winners", "Losers"),
+    decimals = 3
+  ) |>
+  fmt_currency(
+    rows = RowName %in% c("Profit & Loss", "Avg P&L", "Max Amount"),
+    columns = c("Totals", "Winners", "Losers"),
+    accounting = TRUE
+  ) |>
+  sub_values(fn = \(x) is.na(x), replacement = "")
+  
+rm(ttl, wnr, lsr, st_dt, end_dt)
 ```
 
 ```{r}
