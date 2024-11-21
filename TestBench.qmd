@@ -825,7 +825,14 @@ if (incl_buynhold) {
     add_column(
       bnh_pos_size = bnh_ps_vec,
       bnh_eqty = bnh_eqty_vec,
-      .after = "eqty_h"
+      .after = "pct_chg"
+    ) |>
+    mutate(
+      bnh_pct_chg = round(
+       if_else(rn == 1, log(bnh_eqty/init_eqty), log(bnh_eqty/lag(bnh_eqty))),
+       4),
+      bnh_dd = round(log(bnh_eqty / slide_max(bnh_eqty, before=Inf)), 4),
+      .after = "bnh_eqty"
     )
 }
 
@@ -909,6 +916,23 @@ bt_totals_data <- bt_trd_data |>
             ttl_roa_pct = sum(bt_trd_data$trd_pnl_pct),
             max_trd_drawdn_pct = min(max_trd_drawdn),
             max_cum_drawdn_pct = min(bt_data$drawdn))
+
+if (incl_buynhold) {
+  # *** TODO: handle unrealized net profit and roa for both bnh & trades ***
+  bt_bnh_totals_data = bt_data |>
+    summarise(
+      bnh_net_profit = last(bnh_eqty) - first(bnh_eqty),
+      bnh_ttl_roa_pct = sum(bnh_pct_chg)
+    )
+  
+  bt_totals_data <- bt_totals_data |>
+    add_column(
+      bnh_net_profit = bt_bnh_totals_data$bnh_net_profit,
+      bnh_ttl_roa_pct = bt_bnh_totals_data$bnh_ttl_roa_pct
+    )
+    
+}
+
 bt_totals_data
 ```
 
@@ -922,6 +946,27 @@ bt_yrly_data <- bt_data |>
                               first(prev_eqty)),
             end_eqty = last(eqty),
             max_yr_drawdn = min(drawdn))
+
+if (incl_buynhold) {
+  bt_bnh_yrly_data = bt_data |>
+    mutate(yr = year(dt),
+           bnh_prev_eqty = lag(bnh_eqty)) |>
+    group_by(yr) |>
+    summarise(bnh_st_eqty = if_else(is.na(first(bnh_prev_eqty)),
+                              init_eqty,
+                              first(bnh_prev_eqty)),
+            bnh_end_eqty = last(bnh_eqty),
+            bnh_max_yr_dd = min(bnh_dd))
+  
+  bt_yrly_data <- bt_yrly_data |>
+    add_column(
+      bnh_st_eqty = bt_bnh_yrly_data$bnh_st_eqty,
+      bnh_end_eqty = bt_bnh_yrly_data$bnh_end_eqty,
+      bnh_max_yr_dd = bt_bnh_yrly_data$bnh_max_yr_dd
+    )
+  
+  # rm(bt_bnh_yrly_data)
+}
 # bt_yrly_data
 ```
 
@@ -1309,6 +1354,7 @@ highchart(type = "stock") |>
   hc_add_series(mnthly_spy_xts, 
                 id = 1, 
                 dataGrouping = list(enabled = FALSE),
+                color = "forestgreen", lineColor = "forestgreen",
                 tooltip = list(pointFormat = paste0(
                     "Open: {point.open} <br/>",
                     "High: {point.high} <br/>",
