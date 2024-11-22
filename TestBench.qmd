@@ -917,23 +917,33 @@ bt_totals_data <- bt_trd_data |>
             max_trd_drawdn_pct = min(max_trd_drawdn),
             max_cum_drawdn_pct = min(bt_data$drawdn))
 
+bt_totals_data
+```
+
+```{r}
+bt_unrlzd_data <- bt_data |>
+  summarise(
+    unrlzd_net_profit = last(eqty) - init_eqty,
+    unrlzd_roa_pct = sum(pct_chg)
+  )
+
 if (incl_buynhold) {
-  # *** TODO: handle unrealized net profit and roa for both bnh & trades ***
-  bt_bnh_totals_data = bt_data |>
+  bt_bnh_unrlzd_data = bt_data |>
     summarise(
-      bnh_net_profit = last(bnh_eqty) - first(bnh_eqty),
+      bnh_net_profit = last(bnh_eqty) - init_eqty,
       bnh_ttl_roa_pct = sum(bnh_pct_chg)
     )
   
-  bt_totals_data <- bt_totals_data |>
+  bt_unrlzd_data <- bt_unrlzd_data |>
     add_column(
-      bnh_net_profit = bt_bnh_totals_data$bnh_net_profit,
-      bnh_ttl_roa_pct = bt_bnh_totals_data$bnh_ttl_roa_pct
+      bnh_unrlzd_net_profit = bt_bnh_unrlzd_data$bnh_net_profit,
+      bnh_unrlzd_ttl_roa_pct = bt_bnh_unrlzd_data$bnh_ttl_roa_pct
     )
-    
 }
 
-bt_totals_data
+rm(bt_bnh_unrlzd_data)
+
+bt_unrlzd_data
 ```
 
 ```{r}
@@ -1020,6 +1030,32 @@ calmar_val <- round(
 sharp_val <- round(sharp_func(bt_trd_data$trd_pnl), 3)
 
 anlzd_sharp_val <- round(anlzd_sharp_func(bt_data$pct_chg, 12), 3)
+
+if (incl_buynhold) {
+  bnh_cagr_val <- round(
+    cagr_func(
+      dplyr::first(bt_yrly_data$bnh_st_eqty),
+      dplyr::last(bt_yrly_data$bnh_end_eqty),
+      nrow(bt_yrly_data)),
+    4)
+  
+  bnh_mar_val <- round(
+    mar_func(
+      bnh_cagr_val,
+      max_dd_func(bt_yrly_data$bnh_max_yr_dd)),
+    3)
+  
+  bnh_calmar_val <- round(
+    mar_func(
+      cagr_func(
+        dplyr::first(bt_yrly_tail_data$bnh_st_eqty),
+        dplyr::last(bt_yrly_tail_data$bnh_end_eqty),
+        nrow(bt_yrly_tail_data)),
+      max_dd_func(bt_yrly_tail_data$bnh_max_yr_dd)),
+    3)
+  
+  bnh_anlzd_sharp_val <- round(anlzd_sharp_func(bt_data$bnh_pct_chg, 12), 3)
+}
 ```
 
 ```{r}
@@ -1029,6 +1065,7 @@ bt_metrics <- list(
   data_yrly = bt_yrly_data,
   data_winloss = bt_winloss_data,
   data_totals = bt_totals_data,
+  data_unrlzd = bt_unrlzd_data,
   calc_time_in_mkt = time_in_mkt_val,
   calc_cagr = cagr_val,
   calc_mar = mar_val,
@@ -1036,6 +1073,15 @@ bt_metrics <- list(
   calc_sharp = sharp_val,
   calc_anlzd_sharp = anlzd_sharp_val
 )
+
+if (incl_buynhold) {
+  bt_metrics <- append(bt_metrics, list(
+    calc_bnh_cagr = bnh_cagr_val,
+    calc_bnh_mar = bnh_mar_val,
+    calc_bnh_calmar = bnh_calmar_val,
+    calc_bnh_anlzd_sharp = bnh_anlzd_sharp_val
+  ))
+}
 
 bt_metrics
 ```
@@ -1051,6 +1097,14 @@ print(glue("MAR: {bt_metrics$calc_mar}"))
 print(glue("CALMAR: {bt_metrics$calc_calmar}"))
 print(glue("Sharp: {bt_metrics$calc_sharp}"))
 print(glue("Annualized Sharp: {bt_metrics$calc_anlzd_sharp}"))
+if (incl_buynhold) {
+  print(glue(
+    "Buy & Hold CAGR: {scales::label_percent(0.01)(bnh_cagr)}",
+    bnh_cagr = bt_metrics$calc_bnh_cagr))
+  print(glue("Buy & Hold MAR: {bt_metrics$calc_bnh_mar}"))
+  print(glue("Buy & Hold CALMAR: {bt_metrics$calc_bnh_calmar}"))
+  print(glue("Buy & Hold Annualized Sharp: {bt_metrics$calc_bnh_anlzd_sharp}"))
+}
 ```
 
 ```{r}
@@ -1105,13 +1159,16 @@ d2 <- c(
 ```
 
 ```{r}
+# TODO: Add Optional Buy & Hold Metrics
+# TODO: Add Optimized/Select Metrics (Remove Best & Worst Trade)
 wnr <- bt_metrics$data_winloss |> dplyr::filter(trd_rslt == "Winner")
 lsr <- bt_metrics$data_winloss |> dplyr::filter(trd_rslt == "Loser")
 ttl <- bt_metrics$data_totals
+unr <- bt_metrics$data_unrlzd
 st_dt <- dplyr::first(bt_metrics$data_series$dt)
 end_dt <- dplyr::last(bt_metrics$data_series$dt)
 
-tribble(
+bt_fmt_tbl <- tribble(
   ~RowName, ~Group, ~Totals, ~Winners, ~Losers,
   "Trade Count", "Trade Stats", ttl$trd_cnt, wnr$trd_cnt, lsr$trd_cnt,
   "Profit & Loss", "Trade Stats", ttl$net_profit, wnr$gross_pnl, lsr$gross_pnl,
@@ -1120,7 +1177,8 @@ tribble(
   "Max Consecutive", "Trade Stats", NA, wnr$max_consec_win_loss, lsr$max_consec_win_loss,
   "Max Amount", "Trade Stats", NA, wnr$max_win_loss, lsr$max_win_loss,
   "Profitable", "Summary Stats", ttl$pct_profitable, NA, NA,
-  "ROA", "Summary Stats", ttl$ttl_roa_pct, NA, NA,
+  "Closed ROA", "Summary Stats", ttl$ttl_roa_pct, NA, NA,
+  "Cumul. ROA", "Summary Stats", unr$unrlzd_roa_pct, NA, NA,
   "Max Trade DD", "Summary Stats", ttl$max_trd_drawdn_pct, NA, NA,
   "Max Cumul. DD", "Summary Stats", ttl$max_cum_drawdn_pct, NA, NA,
   "Profit Factor", "Summary Stats", ttl$profit_factor, NA, NA,
@@ -1132,7 +1190,11 @@ tribble(
   "Total Months", "Misc. Stats", nrow(bt_metrics$data_series), NA, NA,
   "Trade Months", "Misc. Stats", nrow((bt_metrics$data_series) |> drop_na()), NA, NA,
   "Time in Market", "Misc. Stats", bt_metrics$calc_time_in_mkt, NA, NA,
-) |>
+  "Initial Equity", "Misc. Stats", init_eqty, NA, NA,
+  "End Equity", "Misc. Stats", last(bt_metrics$data_series$eqty), NA, NA,
+)
+
+bt_gt <- bt_fmt_tbl |>
   gt(
     rowname_col = "RowName",
     groupname_col = "Group"
@@ -1154,7 +1216,7 @@ tribble(
     locations = cells_row_groups(groups = everything())
   ) |>
   fmt_percent(
-    rows = RowName %in% c("Profitable", "ROA", "CAGR", "Time in Market", "Max Trade DD", "Max Cumul. DD"),
+    rows = RowName %in% c("Profitable", "Closed ROA", "Cumul. ROA", "CAGR", "Time in Market", "Max Trade DD", "Max Cumul. DD"),
     columns = c("Totals", "Winners", "Losers"),
     accounting = TRUE
   ) |>
@@ -1169,13 +1231,15 @@ tribble(
     decimals = 3
   ) |>
   fmt_currency(
-    rows = RowName %in% c("Profit & Loss", "Avg P&L", "Max Amount"),
+    rows = RowName %in% c("Profit & Loss", "Avg P&L", "Max Amount", "Initial Equity", "End Equity"),
     columns = c("Totals", "Winners", "Losers"),
     accounting = TRUE
   ) |>
   sub_values(fn = \(x) is.na(x), replacement = "")
   
-rm(ttl, wnr, lsr, st_dt, end_dt)
+rm(ttl, wnr, lsr, unr, st_dt, end_dt, bt_fmt_tbl)
+
+bt_gt
 ```
 
 ```{r}
