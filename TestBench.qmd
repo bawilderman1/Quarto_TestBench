@@ -1194,6 +1194,38 @@ bt_fmt_tbl <- tribble(
   "End Equity", "Misc. Stats", last(bt_metrics$data_series$eqty), NA, NA,
 )
 
+if (incl_buynhold) {
+  bnh_list <- list(
+    "Trade Count" = NA,
+    "Profit & Loss" = NA,
+    "Avg P&L" = NA,
+    "Avg Bars" = NA,
+    "Max Consecutive" = NA,
+    "Max Amount" = NA,
+    "Profitable" = NA,
+    "Closed ROA" = NA,
+    "Cumul. ROA" = 1,
+    "Max Trade DD" = NA,
+    "Max Cumul. DD" = 1,
+    "Profit Factor" = NA,
+    "CAGR" = 1,
+    "MAR" = 1,
+    "CALMAR" = 1,
+    "Sharpe" = NA,
+    "Ann. Sharpe" = 1,
+    "Total Months" = NA,
+    "Trade Months" = NA,
+    "Time in Market" = NA,
+    "Initial Equity" = 1,
+    "End Equity" = 1
+  )
+  
+  bt_fmt_tbl <- bt_fmt_tbl |>
+    add_column(BNH = unlist(bnh_list, use.names = FALSE))
+  
+  rm(bnh_list)
+}
+
 bt_gt <- bt_fmt_tbl |>
   gt(
     rowname_col = "RowName",
@@ -1217,25 +1249,31 @@ bt_gt <- bt_fmt_tbl |>
   ) |>
   fmt_percent(
     rows = RowName %in% c("Profitable", "Closed ROA", "Cumul. ROA", "CAGR", "Time in Market", "Max Trade DD", "Max Cumul. DD"),
-    columns = c("Totals", "Winners", "Losers"),
+    columns = names(bt_fmt_tbl)[-(1:2)],
     accounting = TRUE
   ) |>
   fmt_number(
     rows = RowName %in% c("Trade Count", "Max Consecutive", "Total Months", "Trade Months"),
-    columns = c("Totals", "Winners", "Losers"),
+    columns = names(bt_fmt_tbl)[-(1:2)],
     decimals = 0
   ) |>
   fmt_number(
     rows = RowName %in% c("Avg Bars", "Profit Factor", "MAR", "CALMAR", "Sharpe", "Ann. Sharpe"),
-    columns = c("Totals", "Winners", "Losers"),
+    columns = names(bt_fmt_tbl)[-(1:2)],
     decimals = 3
   ) |>
   fmt_currency(
     rows = RowName %in% c("Profit & Loss", "Avg P&L", "Max Amount", "Initial Equity", "End Equity"),
-    columns = c("Totals", "Winners", "Losers"),
+    columns = names(bt_fmt_tbl)[-(1:2)],
     accounting = TRUE
   ) |>
   sub_values(fn = \(x) is.na(x), replacement = "")
+
+if (incl_buynhold) {
+  bt_gt <- bt_gt |>
+    cols_label(BNH ~ "Buy & Hold") |>
+    tab_spanner(label = "Strategy", columns = c("Totals", "Winners", "Losers"))
+}
   
 rm(ttl, wnr, lsr, unr, st_dt, end_dt, bt_fmt_tbl)
 
