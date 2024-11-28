@@ -1204,20 +1204,20 @@ if (incl_buynhold) {
     "Max Amount" = NA,
     "Profitable" = NA,
     "Closed ROA" = NA,
-    "Cumul. ROA" = 1,
+    "Cumul. ROA" = unr$bnh_unrlzd_ttl_roa_pct,
     "Max Trade DD" = NA,
-    "Max Cumul. DD" = 1,
+    "Max Cumul. DD" = min(bt_metrics$data_series$bnh_dd),
     "Profit Factor" = NA,
-    "CAGR" = 1,
-    "MAR" = 1,
-    "CALMAR" = 1,
+    "CAGR" = bt_metrics$calc_bnh_cagr,
+    "MAR" = bt_metrics$calc_bnh_mar,
+    "CALMAR" = bt_metrics$calc_bnh_calmar,
     "Sharpe" = NA,
-    "Ann. Sharpe" = 1,
+    "Ann. Sharpe" = bt_metrics$calc_bnh_anlzd_sharp,
     "Total Months" = NA,
     "Trade Months" = NA,
     "Time in Market" = NA,
-    "Initial Equity" = 1,
-    "End Equity" = 1
+    "Initial Equity" = init_eqty,
+    "End Equity" = last(bt_metrics$data_series$bnh_eqty)
   )
   
   bt_fmt_tbl <- bt_fmt_tbl |>
@@ -1232,7 +1232,7 @@ bt_gt <- bt_fmt_tbl |>
     groupname_col = "Group"
   ) |>
   tab_header(title = "Backtest Results (SPY)",
-    subtitle = glue::glue("{st_dt} to {end_dt} (Monthly)")) |>
+    subtitle = glue::glue("{st_dt} to {end_dt} (Monthly Aggregation)")) |>
   opt_align_table_header(align = "left") |>
   opt_vertical_padding(scale = 0.5) |>
   tab_footnote(footnote = "*All Dividends are Reinvested") |>
