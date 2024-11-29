@@ -912,8 +912,8 @@ bt_totals_data <- bt_trd_data |>
             profit_factor = 
               sum(ifelse(trd_rslt == "Winner", 1, 0)) / 
               sum(ifelse(trd_rslt == "Loser", 1, 0)),
-            rlzd_roa_pct = sum(trd_pnl_pct),
-            ttl_roa_pct = sum(bt_trd_data$trd_pnl_pct),
+            rlzd_roa_pct = exp(sum(trd_pnl_pct)) - 1,
+            ttl_roa_pct = exp(sum(bt_trd_data$trd_pnl_pct)) - 1,
             max_trd_drawdn_pct = min(max_trd_drawdn),
             max_cum_drawdn_pct = min(bt_data$drawdn))
 
@@ -924,14 +924,14 @@ bt_totals_data
 bt_unrlzd_data <- bt_data |>
   summarise(
     unrlzd_net_profit = last(eqty) - init_eqty,
-    unrlzd_roa_pct = sum(pct_chg)
+    unrlzd_roa_pct = exp(sum(pct_chg)) - 1
   )
 
 if (incl_buynhold) {
   bt_bnh_unrlzd_data = bt_data |>
     summarise(
       bnh_net_profit = last(bnh_eqty) - init_eqty,
-      bnh_ttl_roa_pct = sum(bnh_pct_chg)
+      bnh_ttl_roa_pct = exp(sum(bnh_pct_chg)) - 1
     )
   
   bt_unrlzd_data <- bt_unrlzd_data |>
@@ -975,9 +975,9 @@ if (incl_buynhold) {
       bnh_max_yr_dd = bt_bnh_yrly_data$bnh_max_yr_dd
     )
   
-  # rm(bt_bnh_yrly_data)
+  rm(bt_bnh_yrly_data)
 }
-# bt_yrly_data
+bt_yrly_data
 ```
 
 ```{r}
@@ -1159,8 +1159,6 @@ d2 <- c(
 ```
 
 ```{r}
-# TODO: Add Optional Buy & Hold Metrics
-# TODO: Add Optimized/Select Metrics (Remove Best & Worst Trade)
 wnr <- bt_metrics$data_winloss |> dplyr::filter(trd_rslt == "Winner")
 lsr <- bt_metrics$data_winloss |> dplyr::filter(trd_rslt == "Loser")
 ttl <- bt_metrics$data_totals
@@ -1278,6 +1276,24 @@ if (incl_buynhold) {
 rm(ttl, wnr, lsr, unr, st_dt, end_dt, bt_fmt_tbl)
 
 bt_gt
+```
+
+```{r}
+# TODO: Add Optimized/Select Metrics (Remove Best & Worst Trade)
+# trd_subset <- \(tbl, cnt = 1, asc = TRUE)
+#   tbl %>%
+#     filter(trd_rslt != "Open") %>%
+#     {`if`(asc, slice_max(., trd_pnl_pct, n = -cnt), slice_min(., trd_pnl_pct, n = -cnt))} %>%
+#     arrange(trd_num)
+  
+# Hack: Not working***
+bt_trd_data |> trd_subset(cnt = 3, asc = FALSE)
+# asc <- TRUE
+# bt_trd_data |>
+#   filter(trd_rslt != "Open") |>
+#   slice_max(trd_pnl_pct, n = -3) |>
+#   # slice_min(trd_pnl_pct, n = -3) |>
+#   arrange(trd_num)
 ```
 
 ```{r}
