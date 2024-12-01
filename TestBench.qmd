@@ -860,7 +860,9 @@ print(paste0("pct time in market: ", as.character(time_in_mkt)))
 bt_trd_data <- bt_data |>
   drop_na() |>
   group_by(trd_num) |>
-  summarise(trd_type = first(pos_type),
+  summarise(trd_st_dt = first(dt),
+            trd_end_dt = last(dt),
+            trd_type = first(pos_type),
             trd_rslt = case_when(
               last(is_closed) == 1 & last(eqty) - first(trd_base) > 0 ~ "Winner",
               last(is_closed) == 1 & last(eqty) - first(trd_base) <= 0 ~ "Loser",
@@ -1279,21 +1281,36 @@ bt_gt
 ```
 
 ```{r}
-# TODO: Add Optimized/Select Metrics (Remove Best & Worst Trade)
-# trd_subset <- \(tbl, cnt = 1, asc = TRUE)
-#   tbl %>%
-#     filter(trd_rslt != "Open") %>%
-#     {`if`(asc, slice_max(., trd_pnl_pct, n = -cnt), slice_min(., trd_pnl_pct, n = -cnt))} %>%
+## TODO: Add Optimized/Select Metrics (Remove Best & Worst Trade)
+# remove_trades_base <- \(tbl, fun, cnt)
+#   tbl |>
+#     filter(trd_rslt != "Open") |>
+#     fun(trd_pnl_pct, n = -cnt) |>
 #     arrange(trd_num)
+
+# remove_n_worst_trades <- \(tbl, cnt) 
+#   remove_trades_base(tbl, slice_max, cnt)
+# remove_n_best_trades <- \(tbl, cnt) 
+#   remove_trades_base(tbl, slice_min, cnt)
+
+# bt_trd_data |> remove_n_best_trades(3)
+
+# get_trades_base <- \(tbl, fun, cnt)
+#   tbl |>
+#     filter(trd_rslt != "Open") |>
+#     fun(trd_pnl_pct, n = cnt) |>
+#     arrange(trd_num)
+# 
+# get_n_worst_trades <- \(tbl, cnt)
+#   get_trades_base(tbl, slice_max, cnt)
+# get_n_best_trades <- \(tbl, cnt)
+#   get_trades_base(tbl, slice_min, cnt)
   
-# Hack: Not working***
-bt_trd_data |> trd_subset(cnt = 3, asc = FALSE)
-# asc <- TRUE
-# bt_trd_data |>
-#   filter(trd_rslt != "Open") |>
-#   slice_max(trd_pnl_pct, n = -3) |>
-#   # slice_min(trd_pnl_pct, n = -3) |>
-#   arrange(trd_num)
+# bt_trd_data |> get_n_best_trades(3)
+bt_trd_data |> get_n_worst_trades(3)
+
+## TODO: Abstract base, yearly and calcs to subprocess functions
+## TODO: Use trade start/end dates to remove from backtest and recalculate stats
 ```
 
 ```{r}
