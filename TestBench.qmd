@@ -1302,12 +1302,44 @@ bt_gt
 #     arrange(trd_num)
 # 
 # get_n_worst_trades <- \(tbl, cnt)
-#   get_trades_base(tbl, slice_max, cnt)
-# get_n_best_trades <- \(tbl, cnt)
 #   get_trades_base(tbl, slice_min, cnt)
+# get_n_best_trades <- \(tbl, cnt)
+#   get_trades_base(tbl, slice_max, cnt)
   
 # bt_trd_data |> get_n_best_trades(3)
-bt_trd_data |> get_n_worst_trades(3)
+# bt_trd_data |> get_n_worst_trades(3) 
+
+# rm_trds_worst <- as.numeric((bt_trd_data |> get_n_worst_trades(3))$trd_num)
+rm_trds_best <- as.numeric((bt_trd_data |> get_n_best_trades(3))$trd_num)
+
+# bt_criteria_x_worst <- bt_data |> 
+#   select(dt, trd_entry, trd_exit, trd_num) |>
+#   mutate(trd_num_x = ifelse(trd_exit == 1 & is.na(trd_num), 
+#                             lag(trd_num), 
+#                             trd_num),
+#          trd_entry = ifelse(trd_num %in% rm_trds_worst, 0, trd_entry),
+#          trd_exit = ifelse(trd_num_x %in% rm_trds_worst, 0, trd_exit)) |>
+#   select(-trd_num, -trd_num_x)
+
+bt_criteria_x_best <- bt_data |> 
+  select(dt, trd_entry, trd_exit, trd_num) |>
+  mutate(trd_num_x = ifelse(trd_exit == 1 & is.na(trd_num), 
+                            lag(trd_num), 
+                            trd_num),
+         trd_entry = ifelse(trd_num %in% rm_trds_best, 0, trd_entry),
+         trd_exit = ifelse(trd_num_x %in% rm_trds_best, 0, trd_exit)) |>
+  select(-trd_num, -trd_num_x)
+
+# bt_data |>
+#   select(-c(trd_entry:tidyselect::last_col())) |>
+#   left_join(bt_criteria_x_worst, by = join_by(dt))
+
+bt_data |>
+  select(-c(trd_entry:tidyselect::last_col())) |>
+  left_join(bt_criteria_x_best, by = join_by(dt))
+
+# bt_trd_data |> get_n_best_trades(3)
+# bt_trd_data |> get_n_worst_trades(3)
 
 ## TODO: Abstract base, yearly and calcs to subprocess functions
 ## TODO: Use trade start/end dates to remove from backtest and recalculate stats
