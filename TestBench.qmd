@@ -687,6 +687,315 @@ fedMtgs |>
   )
 ```
 
+### Start Backtest Functions
+
+```{r}
+strtgy_entry <- \(.) {
+ ifelse((.$mth_nbr == 11 | (.$mth_nbr == 1 & .$rn == 1)), 1, 0)
+}
+strtgy_exit <- \(.) {
+ ifelse(.$mth_nbr == 8, 1, 0)
+}
+
+bt_strtgy <- result |>
+  filter(year(dt) %in% c(2000:2020)) |>
+  mutate(rn = row_number(),
+         mth_nbr = month(dt),
+         dividend = if_else(is.na(dividend), 0, dividend)) |>
+  select(dt, open, high, low, close, rn, mth_nbr, dividend) |>
+  add_trades_func(strtgy_entry, strtgy_exit)
+```
+
+```{r}
+add_trades_func <- \(tbl, entryFunc, exitFunc, ...)
+{
+  tbl |>
+    mutate(
+      trd_entry = entryFunc(tbl, ...),
+      trd_exit = exitFunc(tbl, ...)
+    )
+}
+
+bt_sim_func <- \(tbl, 
+                 init_eqty = 10000, 
+                 incl_dividends = FALSE, 
+                 incl_buynhold = FALSE)
+{
+  if (!"rn" %in% colnames(bt_strtgy)) {
+   tbl = tbl |> mutate(rn = row_number()) 
+  }
+  
+  tbl_rlen = length(tbl$dt)
+  trd_entry_vec = as.numeric(tbl$trd_entry)
+  trd_exit_vec = as.numeric(tbl$trd_exit)
+  pos_size_vec = vector("numeric" , tbl_rlen)
+  pos_val_vec = vector("numeric" , tbl_rlen)
+  cash_vec = vector("numeric" , tbl_rlen)
+  eqty_vec = vector("numeric" , tbl_rlen)
+  eqty_low_vec = vector("numeric" , tbl_rlen)
+  eqty_high_vec = vector("numeric" , tbl_rlen)
+  open_vec = as.numeric(tbl$open)
+  close_vec = as.numeric(tbl$close)
+  low_vec = as.numeric(tbl$low)
+  high_vec = as.numeric(tbl$high)
+  if (incl_dividends) {
+   div_vec = as.numeric(tbl$dividend) 
+  }
+  if (incl_buynhold) {
+    bnh_ps_vec = vector("numeric" , tbl_rlen)
+    bnh_eqty_vec = vector("numeric" , tbl_rlen)
+  }
+  
+  for (i in seq_along(tbl$dt)) {
+    f_row = i == 1
+    entry = as.logical(trd_entry_vec[i])
+    exit = as.logical(trd_exit_vec[i])
+    
+    if (f_row & entry) {
+      pos_size_vec[i] = round(init_eqty / open_vec[i], 2)
+      cash_vec[i] = 0
+    } else if (f_row & !entry) {
+      pos_size_vec[i] = 0
+      cash_vec[i] = init_eqty
+    } else if (entry) {
+      pos_size_vec[i] = round(cash_vec[i - 1] / open_vec[i], 2)
+      cash_vec[i] = 0
+    } else if (exit) {
+      pos_size_vec[i] = 0
+      cash_vec[i] = round(pos_size_vec[i - 1] * open_vec[i], 2)
+    } else {
+      pos_size_vec[i] = pos_size_vec[i - 1]
+      cash_vec[i] = cash_vec[i - 1]
+    }
+    
+    # Handle Buy & Hold data
+    if (incl_buynhold) {
+      if (f_row) {
+        bnh_ps_vec[i] = round(init_eqty / open_vec[i], 2)
+      } else {
+        bnh_ps_vec[i] = bnh_ps_vec[i - 1]
+      }
+      
+      if (incl_dividends & div_vec[i] > 0) {
+        bnh_ps_vec[i] = bnh_ps_vec[i] +
+          round((div_vec[i] * bnh_ps_vec[i]) / open_vec[i], 2)
+      }
+    }
+    
+    # Handle Dividends for long positions at time of ex-div date
+    if (incl_dividends & div_vec[i] > 0 & (pos_size_vec[i] > 0 | exit)) {
+      if (pos_size_vec[i] > 0) {
+        pos_size_vec[i] = pos_size_vec[i] + 
+          round((div_vec[i] * pos_size_vec[i]) / open_vec[i], 2)
+      } else {
+        cash_vec[i] = cash_vec[i] + round(pos_size_vec[i] * div_vec[i], 2)
+      }
+    }
+    
+    pos_val_vec[i] = round(pos_size_vec[i] * close_vec[i], 2)
+    eqty_vec[i] = cash_vec[i] + pos_val_vec[i]
+    eqty_low_vec[i] = round(cash_vec[i] + (pos_size_vec[i] * low_vec[i]), 2)
+    eqty_high_vec[i] = round(cash_vec[i] + (pos_size_vec[i] * high_vec[i]), 2)
+    if (incl_buynhold) {
+      bnh_eqty_vec[i] = round(bnh_ps_vec[i] * close_vec[i], 2)
+    }
+  }
+  
+  tbl = tbl |>
+    add_column(pos_size = pos_size_vec,
+               pos_val = pos_val_vec,
+               cash = cash_vec,
+               eqty = eqty_vec,
+               eqty_l = eqty_low_vec,
+               eqty_h = eqty_high_vec,
+               .after = "trd_exit") |>
+    mutate(drawdn = round(log(eqty / slide_max(eqty, before=Inf)), 4),
+           pos_type = case_when(pos_size > 0 ~ "LONG",
+                                pos_size < 0 ~ "SHORT",
+                                .default = "FLAT"),
+           trd_num = slide_sum(trd_entry, before=Inf)) |>
+    group_by(trd_num) |>
+    mutate(is_closed = max(trd_exit),
+           trd_length = row_number(),
+           trd_drawdn = round(log(eqty / slide_max(eqty, before=Inf)), 4),
+           trd_ur_drawdn = round(log(eqty_l / slide_max(eqty_h, before=Inf)), 4),
+           trd_base = round(first(open) * first(pos_size), 2)) |>
+    ungroup() |>
+    mutate(trd_num = if_else(pos_size == 0, NA, trd_num),
+           trd_length = if_else(pos_size == 0, NA, trd_length),
+           trd_drawdn = if_else(pos_size == 0, NA, trd_drawdn),
+           trd_ur_drawdn = if_else(pos_size == 0, NA, trd_ur_drawdn),
+           trd_base = if_else(pos_size == 0, NA, trd_base),
+           pct_chg = round(
+             if_else(rn == 1, log(eqty/init_eqty), log(eqty/lag(eqty))),
+             4)
+           )
+  
+  if (incl_buynhold) {
+    tbl = tbl |>
+      add_column(
+        bnh_pos_size = bnh_ps_vec,
+        bnh_eqty = bnh_eqty_vec,
+        .after = "pct_chg"
+      ) |>
+      mutate(
+        bnh_pct_chg = round(
+         if_else(rn == 1, log(bnh_eqty/init_eqty), log(bnh_eqty/lag(bnh_eqty))),
+         4),
+        bnh_dd = round(log(bnh_eqty / slide_max(bnh_eqty, before=Inf)), 4),
+        .after = "bnh_eqty"
+      )
+  }
+
+  return(tbl)
+}
+
+bt_trds_func <- \(tbl) {
+  tbl = tbl |>
+    drop_na() |>
+    group_by(trd_num) |>
+    summarise(trd_st_dt = first(dt),
+              trd_end_dt = last(dt),
+              trd_type = first(pos_type),
+              trd_rslt = case_when(
+                last(is_closed) == 1 & last(eqty) - first(trd_base) > 0 ~ "Winner",
+                last(is_closed) == 1 & last(eqty) - first(trd_base) <= 0 ~ "Loser",
+                .default = "Open"),
+              ttl_trd_len = max(trd_length),
+              trd_pnl = last(eqty) - first(trd_base),
+              trd_pnl_pct = round(log(last(eqty) / first(trd_base)), 4),
+              max_trd_drawdn = min(trd_drawdn),
+              max_ur_drawdn = min(trd_ur_drawdn)) |>
+    mutate(wl_seq = dense_rank(trd_rslt) |> consecutive_id()) |>
+    group_by(wl_seq) |>
+    mutate(consec_win_loss = if_else(trd_rslt == "Open", NA, seq_along(wl_seq)),
+           .after = trd_rslt) |>
+    ungroup() |>
+    select(-wl_seq)
+}
+
+bt_winloss_func <- \(tbl) {
+  tbl = tbl |>
+    filter(trd_rslt != "Open") |>
+    group_by(trd_rslt) |>
+    summarise(trd_cnt = n(),
+              gross_pnl = sum(trd_pnl),
+              max_win_loss = if_else(
+                first(trd_rslt) == "Winner",
+                max(trd_pnl),
+                min(trd_pnl)),
+              max_consec_win_loss = max(consec_win_loss),
+              avg_pnl = mean(trd_pnl, na.rm = TRUE),
+              avg_length = mean(ttl_trd_len, na.rm = TRUE)
+    ) 
+}
+
+bt_totals_func <- \(tbl) {
+  tbl = tbl |>
+    filter(trd_rslt != "Open") |>
+    summarise(summary = "Totals",
+              trd_cnt = n(),
+              pct_profitable = sum(ifelse(trd_rslt == "Winner", 1, 0)) / n(),
+              net_profit = sum(trd_pnl),
+              avg_pnl = mean(trd_pnl, na.rm = TRUE),
+              avg_length = mean(ttl_trd_len, na.rm = TRUE),
+              avg_win_loss_ratio = 
+                mean(ifelse(trd_rslt == "Winner", trd_pnl, NA), na.rm = TRUE) /
+                abs(mean(ifelse(trd_rslt == "Loser", trd_pnl, NA), na.rm = TRUE)),
+              profit_factor = 
+                sum(ifelse(trd_rslt == "Winner", 1, 0)) / 
+                sum(ifelse(trd_rslt == "Loser", 1, 0)),
+              rlzd_roa_pct = exp(sum(trd_pnl_pct)) - 1,
+              ttl_roa_pct = exp(sum(bt_trd_data$trd_pnl_pct)) - 1,
+              max_trd_drawdn_pct = min(max_trd_drawdn),
+              max_cum_drawdn_pct = min(bt_data$drawdn))  
+} 
+
+bt_unrlzd_func <- \(tbl, init_eqty, incl_buynhold) {
+  unrlzd_tbl = tbl |>
+    summarise(
+      unrlzd_net_profit = last(eqty) - init_eqty,
+      unrlzd_roa_pct = exp(sum(pct_chg)) - 1
+    )
+  
+  if (incl_buynhold) {
+    bnh_unrlzd_tbl = tbl |>
+      summarise(
+        bnh_net_profit = last(bnh_eqty) - init_eqty,
+        bnh_ttl_roa_pct = exp(sum(bnh_pct_chg)) - 1
+      )
+    
+    unrlzd_tbl = unrlzd_tbl |>
+      add_column(
+        bnh_unrlzd_net_profit = bnh_unrlzd_tbl$bnh_net_profit,
+        bnh_unrlzd_ttl_roa_pct = bnh_unrlzd_tbl$bnh_ttl_roa_pct
+      )
+  }
+  
+  return(unrlzd_tbl)
+} 
+
+bt_yrly_func <- \(tbl, init_eqty, incl_buynhold) {
+  yrly_tbl = tbl |>
+    mutate(yr = year(dt),
+           prev_eqty = lag(eqty)) |>
+    group_by(yr) |>
+    summarise(st_eqty = if_else(is.na(first(prev_eqty)),
+                                init_eqty,
+                                first(prev_eqty)),
+              end_eqty = last(eqty),
+              max_yr_drawdn = min(drawdn))
+  
+  if (incl_buynhold) {
+    bnh_yrly_tbl = tbl |>
+      mutate(yr = year(dt),
+             bnh_prev_eqty = lag(bnh_eqty)) |>
+      group_by(yr) |>
+      summarise(bnh_st_eqty = if_else(is.na(first(bnh_prev_eqty)),
+                                init_eqty,
+                                first(bnh_prev_eqty)),
+              bnh_end_eqty = last(bnh_eqty),
+              bnh_max_yr_dd = min(bnh_dd))
+    
+    yrly_tbl = yrly_tbl |>
+      add_column(
+        bnh_st_eqty = bnh_yrly_tbl$bnh_st_eqty,
+        bnh_end_eqty = bnh_yrly_tbl$bnh_end_eqty,
+        bnh_max_yr_dd = bnh_yrly_tbl$bnh_max_yr_dd
+      )
+  }
+  
+  return(yrly_tbl)
+} 
+```
+
+### Back Test Processing
+
+```{r}
+init_eqty <- 10000
+incl_dividends <- TRUE
+incl_buynhold <- TRUE
+
+# bt_data2 <- bt_strtgy |>
+#   bt_sim_func(init_eqty = init_eqty,
+#               incl_dividends = incl_dividends,
+#               incl_buynhold = incl_buynhold)
+
+# bt_trd_data2 <- bt_data2 |> bt_trds_func()
+
+# bt_winloss_data2 <- bt_trd_data2 |> bt_winloss_func()
+
+# bt_totals_data2 <- bt_trd_data2 |> bt_totals_func()
+
+# bt_unrlzd_data2 <- bt_data2 |> bt_unrlzd_func(init_eqty, incl_buynhold)
+
+bt_yrly_data2 <- bt_data2 |> bt_yrly_func(init_eqty, incl_buynhold)
+
+bt_yrly_data2
+```
+
+### Backtesting Prototype
+
 ```{r}
 bt_tst <- result |>
   filter(year(dt) %in% c(2000:2020)) |>
@@ -852,10 +1161,10 @@ bt_data
 ```
 
 ```{r}
-print(paste0("all months: ", as.character(nrow(bt_data))))
-print(paste0("posn months: ", as.character(nrow(bt_data |> drop_na()))))
-time_in_mkt_val <- nrow(bt_data |> drop_na()) / nrow(bt_data)
-print(paste0("pct time in market: ", as.character(time_in_mkt)))
+# print(paste0("all months: ", as.character(nrow(bt_data))))
+# print(paste0("posn months: ", as.character(nrow(bt_data |> drop_na()))))
+# time_in_mkt_val <- nrow(bt_data |> drop_na()) / nrow(bt_data)
+# print(paste0("pct time in market: ", as.character(time_in_mkt)))
 
 bt_trd_data <- bt_data |>
   drop_na() |>
@@ -1108,6 +1417,8 @@ if (incl_buynhold) {
   print(glue("Buy & Hold Annualized Sharp: {bt_metrics$calc_bnh_anlzd_sharp}"))
 }
 ```
+
+### Bactest Visualizations
 
 ```{r}
 tblA <- tribble(
