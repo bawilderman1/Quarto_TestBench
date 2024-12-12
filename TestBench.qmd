@@ -707,6 +707,29 @@ bt_strtgy <- result |>
 ```
 
 ```{r}
+cagr_func <- function(st_eqty, end_eqty, num_yrs) 
+{
+  ((end_eqty / st_eqty) ^ (1 / num_yrs)) - 1
+}
+max_dd_func <- function(dd_vctr)
+{
+  abs(min(dd_vctr))
+}
+mar_func <- function(cagr, max_dd)
+{
+  cagr / max_dd
+}
+sharp_func <- function(pnl_vctr)
+{
+  mean(pnl_vctr) / sd(pnl_vctr)
+}
+anlzd_sharp_func <- function(pnl_vctr, anlzd_scale = 12)
+{
+  sqrt(anlzd_scale) * (mean(pnl_vctr) / sd(pnl_vctr))
+}
+```
+
+```{r}
 add_trades_func <- \(tbl, entryFunc, exitFunc, ...)
 {
   tbl |>
@@ -967,6 +990,80 @@ bt_yrly_func <- \(tbl, init_eqty, incl_buynhold) {
   
   return(yrly_tbl)
 } 
+
+calcs_strtgy_func <- \(tbl, yrly_tbl, trds_tbl) {
+  time_in_mkt_val <- nrow(tbl |> drop_na()) / nrow(tbl)
+  
+  cagr_val <- round(
+    cagr_func(
+      dplyr::first(yrly_tbl$st_eqty),
+      dplyr::last(yrly_tbl$end_eqty),
+      nrow(yrly_tbl)),
+    4)
+  
+  mar_val <- round(
+    mar_func(
+      cagr_val,
+      max_dd_func(yrly_tbl$max_yr_drawdn)),
+    3)
+  
+  yrly_tbl_tail <- dplyr::slice_tail(yrly_tbl, n = 3)
+  calmar_val <- round(
+    mar_func(
+      cagr_func(
+        dplyr::first(yrly_tbl_tail$st_eqty),
+        dplyr::last(yrly_tbl_tail$end_eqty),
+        nrow(yrly_tbl_tail)),
+      max_dd_func(yrly_tbl_tail$max_yr_drawdn)),
+    3)
+  
+  sharp_val <- round(sharp_func(trds_tbl$trd_pnl), 3)
+  
+  anlzd_sharp_val <- round(anlzd_sharp_func(tbl$pct_chg, 12), 3)
+  
+  return(list(
+    time_in_mkt = time_in_mkt_val,
+    cagr = cagr_val,
+    mar = mar_val,
+    calmar = calmar_val,
+    sharp = sharp_val,
+    anlzd_sharp = anlzd_sharp_val
+  ))
+}
+
+calcs_bnh_func <- \(tbl, yrly_tbl) {
+  bnh_cagr_val <- round(
+    cagr_func(
+      dplyr::first(yrly_tbl$bnh_st_eqty),
+      dplyr::last(yrly_tbl$bnh_end_eqty),
+      nrow(yrly_tbl)),
+    4)
+  
+  bnh_mar_val <- round(
+    mar_func(
+      bnh_cagr_val,
+      max_dd_func(yrly_tbl$bnh_max_yr_dd)),
+    3)
+  
+  yrly_tbl_tail <- dplyr::slice_tail(yrly_tbl, n = 3)
+  bnh_calmar_val <- round(
+    mar_func(
+      cagr_func(
+        dplyr::first(yrly_tbl_tail$bnh_st_eqty),
+        dplyr::last(yrly_tbl_tail$bnh_end_eqty),
+        nrow(yrly_tbl_tail)),
+      max_dd_func(yrly_tbl_tail$bnh_max_yr_dd)),
+    3)
+  
+  bnh_anlzd_sharp_val <- round(anlzd_sharp_func(tbl$bnh_pct_chg, 12), 3)
+  
+  return(list(
+      cagr = bnh_cagr_val,
+      mar = bnh_mar_val,
+      calmar = bnh_calmar_val,
+      anlzd_sharp = bnh_anlzd_sharp_val
+    ))
+}
 ```
 
 ### Back Test Processing
@@ -976,22 +1073,54 @@ init_eqty <- 10000
 incl_dividends <- TRUE
 incl_buynhold <- TRUE
 
-# bt_data2 <- bt_strtgy |>
-#   bt_sim_func(init_eqty = init_eqty,
-#               incl_dividends = incl_dividends,
-#               incl_buynhold = incl_buynhold)
+bt_data2 <- bt_strtgy |>
+  bt_sim_func(init_eqty = init_eqty,
+              incl_dividends = incl_dividends,
+              incl_buynhold = incl_buynhold)
 
-# bt_trd_data2 <- bt_data2 |> bt_trds_func()
+bt_trd_data2 <- bt_data2 |> bt_trds_func()
 
-# bt_winloss_data2 <- bt_trd_data2 |> bt_winloss_func()
+bt_winloss_data2 <- bt_trd_data2 |> bt_winloss_func()
 
-# bt_totals_data2 <- bt_trd_data2 |> bt_totals_func()
+bt_totals_data2 <- bt_trd_data2 |> bt_totals_func()
 
-# bt_unrlzd_data2 <- bt_data2 |> bt_unrlzd_func(init_eqty, incl_buynhold)
+bt_unrlzd_data2 <- bt_data2 |> bt_unrlzd_func(init_eqty, incl_buynhold)
 
 bt_yrly_data2 <- bt_data2 |> bt_yrly_func(init_eqty, incl_buynhold)
 
-bt_yrly_data2
+calcs_strtgy2 <- calcs_strtgy_func(
+  tbl = bt_data2,
+  yrly_tbl = bt_yrly_data2,
+  trds_tbl = bt_trd_data2)
+
+if (incl_buynhold) {
+  calcs_bnh2 <- calcs_bnh_func(
+    tbl = bt_data2,
+    yrly_tbl = bt_yrly_data2)
+}
+
+bt_metrics2 <- list(
+  data_series = bt_data2,
+  data_trd = bt_trd_data2,
+  data_yrly = bt_yrly_data2,
+  data_winloss = bt_winloss_data2,
+  data_totals = bt_totals_data2,
+  data_unrlzd = bt_unrlzd_data2,
+  calcs_strtgy = calcs_strtgy_func(
+    tbl = bt_data2,
+    yrly_tbl = bt_yrly_data2,
+    trds_tbl = bt_trd_data2)
+)
+
+if (incl_buynhold) {
+  bt_metrics2 <- append(bt_metrics2, list(
+    calcs_bnh = calcs_bnh_func(
+    tbl = bt_data2,
+    yrly_tbl = bt_yrly_data2)
+  ))
+}
+
+bt_metrics2
 ```
 
 ### Backtesting Prototype
@@ -1377,20 +1506,24 @@ bt_metrics <- list(
   data_winloss = bt_winloss_data,
   data_totals = bt_totals_data,
   data_unrlzd = bt_unrlzd_data,
-  calc_time_in_mkt = time_in_mkt_val,
-  calc_cagr = cagr_val,
-  calc_mar = mar_val,
-  calc_calmar = calmar_val,
-  calc_sharp = sharp_val,
-  calc_anlzd_sharp = anlzd_sharp_val
+  calcs_strtgy = list(
+    time_in_mkt = time_in_mkt_val,
+    cagr = cagr_val,
+    mar = mar_val,
+    calmar = calmar_val,
+    sharp = sharp_val,
+    anlzd_sharp = anlzd_sharp_val
+  )
 )
 
 if (incl_buynhold) {
   bt_metrics <- append(bt_metrics, list(
-    calc_bnh_cagr = bnh_cagr_val,
-    calc_bnh_mar = bnh_mar_val,
-    calc_bnh_calmar = bnh_calmar_val,
-    calc_bnh_anlzd_sharp = bnh_anlzd_sharp_val
+    calcs_bnh = list(
+      cagr = bnh_cagr_val,
+      mar = bnh_mar_val,
+      calmar = bnh_calmar_val,
+      anlzd_sharp = bnh_anlzd_sharp_val
+    )
   ))
 }
 
@@ -1400,21 +1533,21 @@ bt_metrics
 ```{r}
 print(glue(
   "Percent of Time in market: {scales::label_percent(0.01)(pct)}",
-  pct = bt_metrics$calc_time_in_mkt))
+  pct = bt_metrics$calcs_strtgy$time_in_mkt))
 print(glue(
   "CAGR: {scales::label_percent(0.01)(cagr)}",
-  cagr = bt_metrics$calc_cagr))
-print(glue("MAR: {bt_metrics$calc_mar}"))
-print(glue("CALMAR: {bt_metrics$calc_calmar}"))
-print(glue("Sharp: {bt_metrics$calc_sharp}"))
-print(glue("Annualized Sharp: {bt_metrics$calc_anlzd_sharp}"))
+  cagr = bt_metrics$calcs_strtgy$cagr))
+print(glue("MAR: {bt_metrics$calcs_strtgy$mar}"))
+print(glue("CALMAR: {bt_metrics$calcs_strtgy$calmar}"))
+print(glue("Sharp: {bt_metrics$calcs_strtgy$sharp}"))
+print(glue("Annualized Sharp: {bt_metrics$calcs_strtgy$anlzd_sharp}"))
 if (incl_buynhold) {
   print(glue(
     "Buy & Hold CAGR: {scales::label_percent(0.01)(bnh_cagr)}",
-    bnh_cagr = bt_metrics$calc_bnh_cagr))
-  print(glue("Buy & Hold MAR: {bt_metrics$calc_bnh_mar}"))
-  print(glue("Buy & Hold CALMAR: {bt_metrics$calc_bnh_calmar}"))
-  print(glue("Buy & Hold Annualized Sharp: {bt_metrics$calc_bnh_anlzd_sharp}"))
+    bnh_cagr = bt_metrics$calcs_bnh$cagr))
+  print(glue("Buy & Hold MAR: {bt_metrics$calcs_strtgy$mar}"))
+  print(glue("Buy & Hold CALMAR: {bt_metrics$calcs_bnh$calmar}"))
+  print(glue("Buy & Hold Annualized Sharp: {bt_metrics$calcs_bnh$anlzd_sharp}"))
 }
 ```
 
@@ -1493,14 +1626,14 @@ bt_fmt_tbl <- tribble(
   "Max Trade DD", "Summary Stats", ttl$max_trd_drawdn_pct, NA, NA,
   "Max Cumul. DD", "Summary Stats", ttl$max_cum_drawdn_pct, NA, NA,
   "Profit Factor", "Summary Stats", ttl$profit_factor, NA, NA,
-  "CAGR", "Summary Stats", bt_metrics$calc_cagr, NA, NA,
-  "MAR", "Summary Stats", bt_metrics$calc_mar, NA, NA,
-  "CALMAR", "Summary Stats", bt_metrics$calc_calmar, NA, NA,
-  "Sharpe", "Summary Stats", bt_metrics$calc_sharp, NA, NA,
-  "Ann. Sharpe", "Summary Stats", bt_metrics$calc_anlzd_sharp, NA, NA,
+  "CAGR", "Summary Stats", bt_metrics$calcs_strtgy$cagr, NA, NA,
+  "MAR", "Summary Stats", bt_metrics$calcs_strtgy$mar, NA, NA,
+  "CALMAR", "Summary Stats", bt_metrics$calcs_strtgy$calmar, NA, NA,
+  "Sharpe", "Summary Stats", bt_metrics$calcs_strtgy$sharp, NA, NA,
+  "Ann. Sharpe", "Summary Stats", bt_metrics$calcs_strtgy$anlzd_sharp, NA, NA,
   "Total Months", "Misc. Stats", nrow(bt_metrics$data_series), NA, NA,
   "Trade Months", "Misc. Stats", nrow((bt_metrics$data_series) |> drop_na()), NA, NA,
-  "Time in Market", "Misc. Stats", bt_metrics$calc_time_in_mkt, NA, NA,
+  "Time in Market", "Misc. Stats", bt_metrics$calcs_strtgy$time_in_mkt, NA, NA,
   "Initial Equity", "Misc. Stats", init_eqty, NA, NA,
   "End Equity", "Misc. Stats", last(bt_metrics$data_series$eqty), NA, NA,
 )
@@ -1519,21 +1652,21 @@ if (incl_buynhold) {
     "Max Trade DD" = NA,
     "Max Cumul. DD" = min(bt_metrics$data_series$bnh_dd),
     "Profit Factor" = NA,
-    "CAGR" = bt_metrics$calc_bnh_cagr,
-    "MAR" = bt_metrics$calc_bnh_mar,
-    "CALMAR" = bt_metrics$calc_bnh_calmar,
+    "CAGR" = bt_metrics$calcs_bnh$cagr,
+    "MAR" = bt_metrics$calcs_bnh$mar,
+    "CALMAR" = bt_metrics$calcs_bnh$calmar,
     "Sharpe" = NA,
-    "Ann. Sharpe" = bt_metrics$calc_bnh_anlzd_sharp,
+    "Ann. Sharpe" = bt_metrics$calcs_bnh$anlzd_sharp,
     "Total Months" = NA,
     "Trade Months" = NA,
     "Time in Market" = NA,
     "Initial Equity" = init_eqty,
     "End Equity" = last(bt_metrics$data_series$bnh_eqty)
   )
-  
+
   bt_fmt_tbl <- bt_fmt_tbl |>
     add_column(BNH = unlist(bnh_list, use.names = FALSE))
-  
+
   rm(bnh_list)
 }
 
