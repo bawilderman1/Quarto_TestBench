@@ -702,8 +702,8 @@ bt_strtgy <- result |>
   mutate(rn = row_number(),
          mth_nbr = month(dt),
          dividend = if_else(is.na(dividend), 0, dividend)) |>
-  select(dt, open, high, low, close, rn, mth_nbr, dividend) |>
-  add_trades_func(strtgy_entry, strtgy_exit)
+  select(dt, open, high, low, close, rn, mth_nbr, dividend) #|>
+  #add_trades_func(strtgy_entry, strtgy_exit)
 ```
 
 ```{r}
@@ -992,23 +992,23 @@ bt_yrly_func <- \(tbl, init_eqty, incl_buynhold) {
 } 
 
 calcs_strtgy_func <- \(tbl, yrly_tbl, trds_tbl) {
-  time_in_mkt_val <- nrow(tbl |> drop_na()) / nrow(tbl)
+  time_in_mkt_val = nrow(tbl |> drop_na()) / nrow(tbl)
   
-  cagr_val <- round(
+  cagr_val = round(
     cagr_func(
       dplyr::first(yrly_tbl$st_eqty),
       dplyr::last(yrly_tbl$end_eqty),
       nrow(yrly_tbl)),
     4)
   
-  mar_val <- round(
+  mar_val = round(
     mar_func(
       cagr_val,
       max_dd_func(yrly_tbl$max_yr_drawdn)),
     3)
   
-  yrly_tbl_tail <- dplyr::slice_tail(yrly_tbl, n = 3)
-  calmar_val <- round(
+  yrly_tbl_tail = dplyr::slice_tail(yrly_tbl, n = 3)
+  calmar_val = round(
     mar_func(
       cagr_func(
         dplyr::first(yrly_tbl_tail$st_eqty),
@@ -1017,9 +1017,9 @@ calcs_strtgy_func <- \(tbl, yrly_tbl, trds_tbl) {
       max_dd_func(yrly_tbl_tail$max_yr_drawdn)),
     3)
   
-  sharp_val <- round(sharp_func(trds_tbl$trd_pnl), 3)
+  sharp_val = round(sharp_func(trds_tbl$trd_pnl), 3)
   
-  anlzd_sharp_val <- round(anlzd_sharp_func(tbl$pct_chg, 12), 3)
+  anlzd_sharp_val = round(anlzd_sharp_func(tbl$pct_chg, 12), 3)
   
   return(list(
     time_in_mkt = time_in_mkt_val,
@@ -1032,21 +1032,21 @@ calcs_strtgy_func <- \(tbl, yrly_tbl, trds_tbl) {
 }
 
 calcs_bnh_func <- \(tbl, yrly_tbl) {
-  bnh_cagr_val <- round(
+  bnh_cagr_val = round(
     cagr_func(
       dplyr::first(yrly_tbl$bnh_st_eqty),
       dplyr::last(yrly_tbl$bnh_end_eqty),
       nrow(yrly_tbl)),
     4)
   
-  bnh_mar_val <- round(
+  bnh_mar_val = round(
     mar_func(
       bnh_cagr_val,
       max_dd_func(yrly_tbl$bnh_max_yr_dd)),
     3)
   
-  yrly_tbl_tail <- dplyr::slice_tail(yrly_tbl, n = 3)
-  bnh_calmar_val <- round(
+  yrly_tbl_tail = dplyr::slice_tail(yrly_tbl, n = 3)
+  bnh_calmar_val = round(
     mar_func(
       cagr_func(
         dplyr::first(yrly_tbl_tail$bnh_st_eqty),
@@ -1066,61 +1066,201 @@ calcs_bnh_func <- \(tbl, yrly_tbl) {
 }
 ```
 
+```{r}
+bt_viz_func <- \(metrics, init_eqty = 10000, incl_buynhold = FALSE) {
+  wnr = metrics$data_winloss |> dplyr::filter(trd_rslt == "Winner")
+  lsr = metrics$data_winloss |> dplyr::filter(trd_rslt == "Loser")
+  ttl = metrics$data_totals
+  unr = metrics$data_unrlzd
+  st_dt = dplyr::first(metrics$data_series$dt)
+  end_dt = dplyr::last(metrics$data_series$dt)
+  
+  bt_fmt_tbl = tribble(
+    ~RowName, ~Group, ~Totals, ~Winners, ~Losers,
+    "Trade Count", "Trade Stats", ttl$trd_cnt, wnr$trd_cnt, lsr$trd_cnt,
+    "Profit & Loss", "Trade Stats", ttl$net_profit, wnr$gross_pnl, lsr$gross_pnl,
+    "Avg P&L", "Trade Stats", ttl$avg_pnl, wnr$avg_pnl, lsr$avg_pnl,
+    "Avg Bars", "Trade Stats", ttl$avg_length, wnr$avg_length, lsr$avg_length,
+    "Max Consecutive", "Trade Stats", NA, wnr$max_consec_win_loss, lsr$max_consec_win_loss,
+    "Max Amount", "Trade Stats", NA, wnr$max_win_loss, lsr$max_win_loss,
+    "Profitable", "Summary Stats", ttl$pct_profitable, NA, NA,
+    "Closed ROA", "Summary Stats", ttl$ttl_roa_pct, NA, NA,
+    "Cumul. ROA", "Summary Stats", unr$unrlzd_roa_pct, NA, NA,
+    "Max Trade DD", "Summary Stats", ttl$max_trd_drawdn_pct, NA, NA,
+    "Max Cumul. DD", "Summary Stats", ttl$max_cum_drawdn_pct, NA, NA,
+    "Profit Factor", "Summary Stats", ttl$profit_factor, NA, NA,
+    "CAGR", "Summary Stats", metrics$calcs_strtgy$cagr, NA, NA,
+    "MAR", "Summary Stats", metrics$calcs_strtgy$mar, NA, NA,
+    "CALMAR", "Summary Stats", metrics$calcs_strtgy$calmar, NA, NA,
+    "Sharpe", "Summary Stats", metrics$calcs_strtgy$sharp, NA, NA,
+    "Ann. Sharpe", "Summary Stats", metrics$calcs_strtgy$anlzd_sharp, NA, NA,
+    "Total Months", "Misc. Stats", nrow(metrics$data_series), NA, NA,
+    "Trade Months", "Misc. Stats", nrow((metrics$data_series) |> drop_na()), NA, NA,
+    "Time in Market", "Misc. Stats", metrics$calcs_strtgy$time_in_mkt, NA, NA,
+    "Initial Equity", "Misc. Stats", init_eqty, NA, NA,
+    "End Equity", "Misc. Stats", last(metrics$data_series$eqty), NA, NA,
+  )
+  
+  if (incl_buynhold) {
+    bnh_list = list(
+      "Trade Count" = NA,
+      "Profit & Loss" = NA,
+      "Avg P&L" = NA,
+      "Avg Bars" = NA,
+      "Max Consecutive" = NA,
+      "Max Amount" = NA,
+      "Profitable" = NA,
+      "Closed ROA" = NA,
+      "Cumul. ROA" = unr$bnh_unrlzd_ttl_roa_pct,
+      "Max Trade DD" = NA,
+      "Max Cumul. DD" = min(metrics$data_series$bnh_dd),
+      "Profit Factor" = NA,
+      "CAGR" = metrics$calcs_bnh$cagr,
+      "MAR" = metrics$calcs_bnh$mar,
+      "CALMAR" = metrics$calcs_bnh$calmar,
+      "Sharpe" = NA,
+      "Ann. Sharpe" = metrics$calcs_bnh$anlzd_sharp,
+      "Total Months" = NA,
+      "Trade Months" = NA,
+      "Time in Market" = NA,
+      "Initial Equity" = init_eqty,
+      "End Equity" = last(metrics$data_series$bnh_eqty)
+    )
+  
+    bt_fmt_tbl = bt_fmt_tbl |>
+      add_column(BNH = unlist(bnh_list, use.names = FALSE))
+  }
+  
+  bt_gt = bt_fmt_tbl |>
+    gt(
+      rowname_col = "RowName",
+      groupname_col = "Group"
+    ) |>
+    tab_header(title = "Backtest Results (SPY)",
+      subtitle = glue::glue("{st_dt} to {end_dt} (Monthly Aggregation)")) |>
+    opt_align_table_header(align = "left") |>
+    opt_vertical_padding(scale = 0.5) |>
+    tab_footnote(footnote = "*All Dividends are Reinvested") |>
+    cols_width(
+      RowName ~ px(150),
+      everything() ~ px(150)
+    ) |>
+    tab_style(
+      style = list(
+        cell_fill(color = "#ececec"),
+        cell_text(size = "larger")
+      ),
+      locations = cells_row_groups(groups = everything())
+    ) |>
+    fmt_percent(
+      rows = RowName %in% c("Profitable", "Closed ROA", "Cumul. ROA", "CAGR", "Time in Market", "Max Trade DD", "Max Cumul. DD"),
+      columns = names(bt_fmt_tbl)[-(1:2)],
+      accounting = TRUE
+    ) |>
+    fmt_number(
+      rows = RowName %in% c("Trade Count", "Max Consecutive", "Total Months", "Trade Months"),
+      columns = names(bt_fmt_tbl)[-(1:2)],
+      decimals = 0
+    ) |>
+    fmt_number(
+      rows = RowName %in% c("Avg Bars", "Profit Factor", "MAR", "CALMAR", "Sharpe", "Ann. Sharpe"),
+      columns = names(bt_fmt_tbl)[-(1:2)],
+      decimals = 3
+    ) |>
+    fmt_currency(
+      rows = RowName %in% c("Profit & Loss", "Avg P&L", "Max Amount", "Initial Equity", "End Equity"),
+      columns = names(bt_fmt_tbl)[-(1:2)],
+      accounting = TRUE
+    ) |>
+    sub_values(fn = \(x) is.na(x), replacement = "")
+  
+  if (incl_buynhold) {
+    bt_gt = bt_gt |>
+      cols_label(BNH ~ "Buy & Hold") |>
+      tab_spanner(label = "Strategy", columns = c("Totals", "Winners", "Losers"))
+  }
+  
+  return(bt_gt)
+}
+```
+
 ### Back Test Processing
 
 ```{r}
-init_eqty <- 10000
-incl_dividends <- TRUE
-incl_buynhold <- TRUE
+bt_processor <- \(data_tbl, 
+                  entry_func, 
+                  exit_func, 
+                  init_eqty = 10000, 
+                  incl_buynhold = TRUE, 
+                  incl_dividends = TRUE, 
+                  ...) {
+  data_val = data_tbl |>
+    add_trades_func(entry_func, exit_func) |>
+    bt_sim_func(
+      init_eqty = init_eqty,
+      incl_dividends = incl_dividends,
+      incl_buynhold = incl_buynhold)
+  
+  trd_val = data_val |> bt_trds_func()
+  
+  winloss_val = trd_val |> bt_winloss_func()
+  
+  totals_val = trd_val |> bt_totals_func()
+  
+  unrlzd_val = data_val |> bt_unrlzd_func(init_eqty, incl_buynhold)
+  
+  yrly_val = data_val |> bt_yrly_func(init_eqty, incl_buynhold)
+  
+  calcs_strtgy_val = calcs_strtgy_func(
+    tbl = data_val,
+    yrly_tbl = yrly_val,
+    trds_tbl = trd_val)
+  
+  if (incl_buynhold) {
+    calcs_bnh_val = calcs_bnh_func(
+      tbl = data_val,
+      yrly_tbl = yrly_val)
+  }
+  
+  metrics_val = list(
+    data_series = data_val,
+    data_trd = trd_val,
+    data_yrly = yrly_val,
+    data_winloss = winloss_val,
+    data_totals = totals_val,
+    data_unrlzd = unrlzd_val,
+    calcs_strtgy = calcs_strtgy_val
+  )
+  
+  if (incl_buynhold) {
+    metrics_val <- append(metrics_val, list(
+      calcs_bnh = calcs_bnh_val
+    ))
+  }
 
-bt_data2 <- bt_strtgy |>
-  bt_sim_func(init_eqty = init_eqty,
-              incl_dividends = incl_dividends,
-              incl_buynhold = incl_buynhold)
+  rslts_viz_func = \() bt_viz_func(metrics_val, init_eqty, incl_buynhold)
 
-bt_trd_data2 <- bt_data2 |> bt_trds_func()
-
-bt_winloss_data2 <- bt_trd_data2 |> bt_winloss_func()
-
-bt_totals_data2 <- bt_trd_data2 |> bt_totals_func()
-
-bt_unrlzd_data2 <- bt_data2 |> bt_unrlzd_func(init_eqty, incl_buynhold)
-
-bt_yrly_data2 <- bt_data2 |> bt_yrly_func(init_eqty, incl_buynhold)
-
-calcs_strtgy2 <- calcs_strtgy_func(
-  tbl = bt_data2,
-  yrly_tbl = bt_yrly_data2,
-  trds_tbl = bt_trd_data2)
-
-if (incl_buynhold) {
-  calcs_bnh2 <- calcs_bnh_func(
-    tbl = bt_data2,
-    yrly_tbl = bt_yrly_data2)
-}
-
-bt_metrics2 <- list(
-  data_series = bt_data2,
-  data_trd = bt_trd_data2,
-  data_yrly = bt_yrly_data2,
-  data_winloss = bt_winloss_data2,
-  data_totals = bt_totals_data2,
-  data_unrlzd = bt_unrlzd_data2,
-  calcs_strtgy = calcs_strtgy_func(
-    tbl = bt_data2,
-    yrly_tbl = bt_yrly_data2,
-    trds_tbl = bt_trd_data2)
-)
-
-if (incl_buynhold) {
-  bt_metrics2 <- append(bt_metrics2, list(
-    calcs_bnh = calcs_bnh_func(
-    tbl = bt_data2,
-    yrly_tbl = bt_yrly_data2)
+  metrics_val = append(metrics_val, list(
+    rslts_viz = rslts_viz_func
   ))
+  
+  return(metrics_val)
 }
+```
 
-bt_metrics2
+```{r}
+# init_eqty <- 10000
+# incl_dividends <- TRUE
+# incl_buynhold <- TRUE
+
+bt_metrics3 <- bt_processor(bt_strtgy,
+                            strtgy_entry,
+                            strtgy_exit,
+                            init_eqty = 10000,
+                            incl_buynhold = TRUE,
+                            incl_dividends = TRUE)
+
+bt_metrics3$rslts_viz()
 ```
 
 ### Backtesting Prototype
