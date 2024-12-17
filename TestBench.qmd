@@ -1864,7 +1864,6 @@ bt_gt
 ### Ex. Best/Worst n Trades Comparisons Section
 
 ```{r}
-## TODO: Add Optimized/Select Metrics (Remove Best & Worst Trade)
 # remove_trades_base <- \(tbl, fun, cnt)
 #   tbl |>
 #     filter(trd_rslt != "Open") |>
@@ -1925,8 +1924,6 @@ bt_metrics$data_series |>
 # bt_trd_data |> get_n_best_trades(3)
 # bt_trd_data |> get_n_worst_trades(3)
 
-## TODO: Abstract base, yearly and calcs to subprocess functions
-## TODO: Use trade start/end dates to remove from backtest and recalculate stats
 ```
 
 ```{r}
@@ -1960,21 +1957,74 @@ data_ex_n_trds_func <- \(data_tbl, trd_tbl, trd_type_func, n_trds) {
   return(data_ex_trds)
 }
 
-bt_ex_best3_tst <- data_ex_n_trds_func(
-  bt_metrics$data_series,
-  bt_metrics$data_trd,
-  get_n_best_trades,
-  3)
+ex_n_trd_calcs_func <- \(strtgy_ex_trds, 
+                         init_eqty = 10000, 
+                         incl_dividends = FALSE) {
+  ex_data_tbl = strtgy_ex_trds |>
+    bt_sim_func(
+      init_eqty = init_eqty,
+      incl_dividends = incl_dividends,
+      incl_buynhold = FALSE)
+  
+  ex_trd_tbl = ex_data_tbl |> bt_trds_func()
+  ex_yrly_tbl = ex_data_tbl |> bt_yrly_func(init_eqty, FALSE)
+  
+  ex_calcs_strtgy = calcs_strtgy_func(
+    tbl = ex_data_tbl,
+    yrly_tbl = ex_yrly_tbl,
+    trds_tbl = ex_trd_tbl)
+  
+  return(ex_calcs_strtgy)
+}
 
-bt_ex_worst3_tst <-data_ex_n_trds_func(
-  bt_metrics$data_series, 
-  bt_metrics$data_trd, 
-  get_n_worst_trades, 
-  3)
+calcs_to_row_func <- \(calc_list, trd_type, n_trds) {
+  utils::modifyList(
+      list(rm_trds = trd_type, n = n_trds), 
+      calc_list) |>
+    as_tibble_row()
+}
 
-# TODO: abstract trade data ex trades into yearly metrics and then annual calcs
-# TODO: function to allow vector of trades to be removed i.e. C(1, 3)
+rm_best_worst_trds_func <- \(data_tbl, 
+                             trd_tbl, 
+                             orig_calcs, 
+                             n_trds = 3, 
+                             init_eqty = 10000,
+                             incl_dividends = FALSE) {
+  all_trds_tbl = orig_calcs |> calcs_to_row_func("none", NA)
+  
+  ex_best_tbl = data_ex_n_trds_func(
+      bt_metrics$data_series,
+      bt_metrics$data_trd,
+      get_n_best_trades,
+      n_trds) |>
+    ex_n_trd_calcs_func(init_eqty, incl_dividends) |>
+    calcs_to_row_func("best", n_trds)
+  
+  ex_worst_tbl = bt_ex_worst3_tst <-data_ex_n_trds_func(
+      bt_metrics$data_series,
+      bt_metrics$data_trd,
+      get_n_worst_trades,
+      n_trds) |>
+    ex_n_trd_calcs_func(init_eqty, incl_dividends) |>
+    calcs_to_row_func("worst", n_trds)
+  
+  comb_tbl = rbind(ex_worst_tbl, all_trds_tbl, ex_best_tbl)
+  
+  return(comb_tbl)
+}
+
+
+```
+
+```{r}
 # TODO: create gt for comparison of scenarios and add to bt_metrics as function
+
+rm_best_worst_trds_func(data_tbl = bt_metrics$data_series, 
+                        trd_tbl = bt_metrics$data_trd, 
+                        orig_calcs = bt_metrics$calcs_strtgy, 
+                        n_trds =  3, 
+                        init_eqty = 10000, 
+                        incl_dividends = TRUE)
 ```
 
 ```{r}
