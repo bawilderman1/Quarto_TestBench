@@ -1167,6 +1167,132 @@ bt_viz_func <- \(metrics, init_eqty = 10000, incl_buynhold = FALSE) {
 }
 ```
 
+```{r}
+get_trades_base <- \(tbl, fun, cnt)
+  tbl |>
+    filter(trd_rslt != "Open") |>
+    fun(trd_pnl_pct, n = cnt) |>
+    arrange(trd_num)
+
+get_n_worst_trades <- \(tbl, cnt)
+  get_trades_base(tbl, slice_min, cnt)
+get_n_best_trades <- \(tbl, cnt)
+  get_trades_base(tbl, slice_max, cnt)
+
+data_ex_n_trds_func <- \(data_tbl, trd_tbl, trd_type_func, n_trds) {
+  rm_trds = as.numeric((trd_tbl |> trd_type_func(n_trds))$trd_num)
+
+  criteria_ex_trds = data_tbl |>
+    select(dt, trd_entry, trd_exit, trd_num) |>
+    mutate(trd_num_x = ifelse(trd_exit == 1 & is.na(trd_num),
+                              lag(trd_num),
+                              trd_num),
+           trd_entry = ifelse(trd_num %in% rm_trds, 0, trd_entry),
+           trd_exit = ifelse(trd_num_x %in% rm_trds, 0, trd_exit)) |>
+    select(-trd_num, -trd_num_x)
+
+  data_ex_trds = data_tbl |>
+    select(-c(trd_entry:tidyselect::last_col())) |>
+    left_join(criteria_ex_trds, by = join_by(dt))
+
+  return(data_ex_trds)
+}
+
+ex_n_trd_calcs_func <- \(strtgy_ex_trds, 
+                         init_eqty = 10000, 
+                         incl_dividends = FALSE) {
+  ex_data_tbl = strtgy_ex_trds |>
+    bt_sim_func(
+      init_eqty = init_eqty,
+      incl_dividends = incl_dividends,
+      incl_buynhold = FALSE)
+  
+  ex_trd_tbl = ex_data_tbl |> bt_trds_func()
+  ex_yrly_tbl = ex_data_tbl |> bt_yrly_func(init_eqty, FALSE)
+  
+  ex_calcs_strtgy = calcs_strtgy_func(
+    tbl = ex_data_tbl,
+    yrly_tbl = ex_yrly_tbl,
+    trds_tbl = ex_trd_tbl)
+  
+  return(ex_calcs_strtgy)
+}
+
+calcs_to_row_func <- \(calc_list, trd_type, n_trds) {
+  utils::modifyList(
+      list(rm_trds = trd_type, n = n_trds), 
+      calc_list) |>
+    as_tibble_row()
+}
+
+rm_best_worst_trds_func <- \(data_tbl, 
+                             trd_tbl, 
+                             orig_calcs, 
+                             n_trds = 3, 
+                             init_eqty = 10000,
+                             incl_dividends = FALSE) {
+  all_trds_tbl = orig_calcs |> calcs_to_row_func("none", NA)
+  
+  ex_best_tbl = data_ex_n_trds_func(
+      bt_metrics$data_series,
+      bt_metrics$data_trd,
+      get_n_best_trades,
+      n_trds) |>
+    ex_n_trd_calcs_func(init_eqty, incl_dividends) |>
+    calcs_to_row_func("best", n_trds)
+  
+  ex_worst_tbl = bt_ex_worst3_tst <-data_ex_n_trds_func(
+      bt_metrics$data_series,
+      bt_metrics$data_trd,
+      get_n_worst_trades,
+      n_trds) |>
+    ex_n_trd_calcs_func(init_eqty, incl_dividends) |>
+    calcs_to_row_func("worst", n_trds)
+  
+  comb_tbl = rbind(ex_worst_tbl, all_trds_tbl, ex_best_tbl)
+  
+  return(comb_tbl)
+}
+
+rm_trds_gt_func <- \(tbl) {
+  tbl |>
+    dplyr::mutate(scenario = if_else(
+        rm_trds == "none", 
+        "All Trades", 
+        glue("{n} {str_to_title(rm_trds)} Trade{ifelse(n != 1, 's', '')} Removed")
+      ),
+      .before = rm_trds) |>
+    gt(
+      rowname_col = "scenario"
+    ) |>
+    cols_hide(c(rm_trds, n)) |>
+    cols_label(
+      rm_trds = "Scenario",
+      time_in_mkt = "Time in Market",
+      cagr = "CAGR",
+      mar = "MAR",
+      calmar = "CALMAR",
+      sharp = "Sharpe",
+      anlzd_sharp = "Ann. Sharpe") |>
+    tab_header(title = "Edge Case Comparisons") |>
+    opt_align_table_header(align = "left") |>
+    opt_vertical_padding(scale = 0.5) |>
+    tab_footnote(footnote = "*All Dividends are Reinvested") |>
+    cols_width(
+      scenario ~ px(250),
+      everything() ~ px(125)
+    ) |>
+    fmt_percent(
+      columns = c(time_in_mkt, cagr),
+      accounting = TRUE
+    ) |>
+    fmt_number(
+      columns = c(mar, calmar, sharp, anlzd_sharp),
+      decimals = 3
+    )
+}
+```
+
 ### Back Test Processing
 
 ```{r}
@@ -1222,9 +1348,29 @@ bt_processor <- \(data_tbl,
   }
 
   rslts_viz_func = \() bt_viz_func(metrics_val, init_eqty, incl_buynhold)
+  
+  best_worst_viz_func = \(n_trds = 1, as_tbl = FALSE) {
+    rm_best_worst_trds = rm_best_worst_trds_func(
+      data_tbl = data_val,
+      trd_tbl = trd_val,
+      orig_calcs = calcs_strtgy_val,
+      n_trds = n_trds,
+      init_eqty = init_eqty,
+      incl_dividends = incl_dividends) 
+    
+    if (as_tbl) {
+      return(rm_best_worst_trds)
+    } else {
+      rm_best_worst_trds_gt = rm_best_worst_trds |>
+        rm_trds_gt_func()
+      
+      return(rm_best_worst_trds_gt)
+    }
+  }
 
   metrics_val = append(metrics_val, list(
-    rslts_viz = rslts_viz_func
+    rslts_viz = rslts_viz_func,
+    best_worst_viz = best_worst_viz_func
   ))
   
   return(metrics_val)
@@ -1250,14 +1396,15 @@ bt_processor <- \(data_tbl,
 #          dividend = if_else(is.na(dividend), 0, dividend)) |>
 #   select(dt, open, high, low, close, rn, mth_nbr, dividend)
 
-bt_metrics <- bt_processor(bt_strtgy,
-                            strtgy_entry,
-                            strtgy_exit,
-                            init_eqty = 10000,
-                            incl_buynhold = TRUE,
-                            incl_dividends = TRUE)
-
-bt_metrics$rslts_viz()
+# bt_metrics <- bt_processor(bt_strtgy,
+#                             strtgy_entry,
+#                             strtgy_exit,
+#                             init_eqty = 10000,
+#                             incl_buynhold = TRUE,
+#                             incl_dividends = TRUE)
+# 
+# bt_metrics$rslts_viz()
+bt_metrics$best_worst_viz(3)
 ```
 
 ### Backtesting Prototype
@@ -2013,18 +2160,94 @@ rm_best_worst_trds_func <- \(data_tbl,
   return(comb_tbl)
 }
 
-
+rm_trds_gt_func <- \(tbl) {
+  tbl |>
+    dplyr::mutate(scenario = if_else(
+        rm_trds == "none", 
+        "All Trades", 
+        glue("{n} {str_to_title(rm_trds)} Trade{ifelse(n != 1, 's', '')} Removed")
+      ),
+      .before = rm_trds) |>
+    gt(
+      rowname_col = "scenario"
+    ) |>
+    cols_hide(c(rm_trds, n)) |>
+    cols_label(
+      rm_trds = "Scenario",
+      time_in_mkt = "Time in Market",
+      cagr = "CAGR",
+      mar = "MAR",
+      calmar = "CALMAR",
+      sharp = "Sharpe",
+      anlzd_sharp = "Ann. Sharpe") |>
+    tab_header(title = "Edge Case Comparisons") |>
+    opt_align_table_header(align = "left") |>
+    opt_vertical_padding(scale = 0.5) |>
+    tab_footnote(footnote = "*All Dividends are Reinvested") |>
+    cols_width(
+      scenario ~ px(250),
+      everything() ~ px(125)
+    ) |>
+    fmt_percent(
+      columns = c(time_in_mkt, cagr),
+      accounting = TRUE
+    ) |>
+    fmt_number(
+      columns = c(mar, calmar, sharp, anlzd_sharp),
+      decimals = 3
+    )
+}
 ```
 
 ```{r}
-# TODO: create gt for comparison of scenarios and add to bt_metrics as function
-
-rm_best_worst_trds_func(data_tbl = bt_metrics$data_series, 
-                        trd_tbl = bt_metrics$data_trd, 
-                        orig_calcs = bt_metrics$calcs_strtgy, 
-                        n_trds =  3, 
-                        init_eqty = 10000, 
+best_worst_tbl <-
+rm_best_worst_trds_func(data_tbl = bt_metrics$data_series,
+                        trd_tbl = bt_metrics$data_trd,
+                        orig_calcs = bt_metrics$calcs_strtgy,
+                        n_trds =  3,
+                        init_eqty = 10000,
                         incl_dividends = TRUE)
+
+best_worst_tbl |>
+  rm_trds_gt_func()
+```
+
+```{r}
+  best_worst_tbl |>
+    dplyr::mutate(scenario = if_else(
+        rm_trds == "none", 
+        "All Trades", 
+        glue("{n} {str_to_title(rm_trds)} Trade{ifelse(n != 1, 's', '')} Removed")
+      ),
+      .before = rm_trds) |>
+    gt(
+      rowname_col = "scenario"
+    ) |>
+    cols_hide(c(rm_trds, n)) |>
+    cols_label(
+      rm_trds = "Scenario",
+      time_in_mkt = "Time in Market",
+      cagr = "CAGR",
+      mar = "MAR",
+      calmar = "CALMAR",
+      sharp = "Sharpe",
+      anlzd_sharp = "Ann. Sharpe") |>
+    tab_header(title = "Edge Case Comparisons") |>
+    opt_align_table_header(align = "left") |>
+    opt_vertical_padding(scale = 0.5) |>
+    tab_footnote(footnote = "*All Dividends are Reinvested") |>
+    cols_width(
+      scenario ~ px(250),
+      everything() ~ px(125)
+    ) |>
+    fmt_percent(
+      columns = c(time_in_mkt, cagr),
+      accounting = TRUE
+    ) |>
+    fmt_number(
+      columns = c(mar, calmar, sharp, anlzd_sharp),
+      decimals = 3
+    )
 ```
 
 ```{r}
