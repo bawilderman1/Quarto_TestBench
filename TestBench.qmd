@@ -32,6 +32,7 @@ library(purrr)
 library(glue)
 library(gt)
 library(highcharter)
+library(quantmod)
 filter <- dplyr::filter
 lag <- dplyr::lag
 select <- dplyr::select
@@ -2400,7 +2401,19 @@ mnthly_spy_tmp <- result |>
 
 mnthly_spy_xts <- xts(mnthly_spy_tmp[,-1], order.by = as.POSIXct(mnthly_spy_tmp[[1]]))
 
-rm(mnthly_spy_tmp)
+fltr_spy_tmp <- mnthly_spy_tmp |>
+  filter((SPY.Close - SPY.Low) / (SPY.High - SPY.Low) < 0.15)
+
+fltr_spy_xts <- xts(fltr_spy_tmp[,-1], order.by = as.POSIXct(fltr_spy_tmp[[1]]))
+
+rm(mnthly_spy_tmp, fltr_spy_tmp)
+```
+
+```{r}
+mnthly_spy.sma.5 <- round(SMA(Cl(mnthly_spy_xts), n = 5), 2)
+mnthly_spy.rsi.14 <- round(RSI(Cl(mnthly_spy_xts)), 2)
+mnthly_spy.rsi.oversold <- xts(rep(70, NROW(mnthly_spy_xts)), index (mnthly_spy_xts))
+mnthly_spy.rsi.overbought <- xts(rep(30, NROW(mnthly_spy_xts)), index (mnthly_spy_xts))
 ```
 
 ```{r}
@@ -2413,7 +2426,7 @@ rm(mnthly_spy_tmp)
 highchart(type = "stock") |>
   hc_title(text = "SPY - Monthly") |>
   hc_add_theme(hc_theme_hcrt()) |>
-  hc_yAxis(type = "logarithmic", showLastLabel = TRUE) |>
+  # hc_yAxis(type = "logarithmic", showLastLabel = TRUE) |>
   hc_rangeSelector(selected = 1, buttons = list(
     list(type = 'year', count = 5, text = '5y'),
     list(type = 'year', count = 10, text = '10y'),
@@ -2423,14 +2436,27 @@ highchart(type = "stock") |>
   #            headerFormat = "{pointer.key}",
   #            pointFormat = tool_tip,
   #            distance = 10) |>
+  hc_add_series(mnthly_spy.sma.5, id = 3, yAxis = 0, name = "SMA(5)", color = hex_to_rgba("red", 0.5)) |>
   hc_add_series(mnthly_spy_xts, 
                 id = 1, 
                 dataGrouping = list(enabled = FALSE),
-                color = "forestgreen", lineColor = "forestgreen",
+                color = "black", lineColor = "black",
                 tooltip = list(pointFormat = paste0(
                     "Open: {point.open} <br/>",
                     "High: {point.high} <br/>",
                     "Low: {point.low} <br/>",
-                    "Close: {point.close} <br/>"))
-              )
+                    "Close: {point.close} <br/>")),
+                yAxis = 0
+              ) |>
+  hc_add_series(fltr_spy_xts, id = 2, yAxis = 0, 
+                dataGrouping = list(enabled = FALSE), 
+                color = "forestgreen", lineColor = "forestgreen", 
+                tooltip = list(pointFormat = paste0("Closed < 15% of Range"))
+  ) |>
+  hc_add_yAxis(nid = 1L, title = list(text = "Prices"), 
+               relative = 3, type = "logarithmic") |>
+  hc_add_series(mnthly_spy.rsi.14, yAxis = 1, name = "Oscillator", color = "cyan") |>
+  hc_add_series(mnthly_spy.rsi.oversold, yAxis = 1, name = "Oversold", color = hex_to_rgba("black", 0.7)) |>
+  hc_add_series(mnthly_spy.rsi.overbought, yAxis = 1, name = "Overbought", color = hex_to_rgba("black", 0.7)) |>
+  hc_add_yAxis(nid = 2L, title = list(text = "RSI(14)"), relative = 1)
 ```
