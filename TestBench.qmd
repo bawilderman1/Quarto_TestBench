@@ -2399,12 +2399,17 @@ mnthly_spy_tmp <- result |>
   rename(Date = dt, SPY.Open = open, SPY.High = high, SPY.Low = low, SPY.Close = close) |>
   select(Date, SPY.Open, SPY.High, SPY.Low, SPY.Close)
 
-mnthly_spy_xts <- xts(mnthly_spy_tmp[,-1], order.by = as.POSIXct(mnthly_spy_tmp[[1]]))
+# mnthly_spy_xts <- xts(mnthly_spy_tmp[,-1], order.by = as.POSIXct(mnthly_spy_tmp[[1]]))
+mnthly_spy_xts <- xts(mnthly_spy_tmp[,-1], order.by = mnthly_spy_tmp[[1]])
 
 fltr_spy_tmp <- mnthly_spy_tmp |>
   filter((SPY.Close - SPY.Low) / (SPY.High - SPY.Low) < 0.15)
 
-fltr_spy_xts <- xts(fltr_spy_tmp[,-1], order.by = as.POSIXct(fltr_spy_tmp[[1]]))
+# fltr_spy_xts <- xts(fltr_spy_tmp[,-1], order.by = as.POSIXct(fltr_spy_tmp[[1]]))
+fltr_spy_xts <- xts(fltr_spy_tmp[,-1], order.by = fltr_spy_tmp[[1]])
+
+mnthly_spy.open.trade <- mnthly_spy_xts[lubridate::month(index(mnthly_spy_xts)) == 2]
+mnthly_spy.close.trade <- mnthly_spy_xts[lubridate::month(index(mnthly_spy_xts)) == 9]
 
 rm(mnthly_spy_tmp, fltr_spy_tmp)
 ```
@@ -2436,7 +2441,9 @@ highchart(type = "stock") |>
   #            headerFormat = "{pointer.key}",
   #            pointFormat = tool_tip,
   #            distance = 10) |>
-  hc_add_series(mnthly_spy.sma.5, id = 3, yAxis = 0, name = "SMA(5)", color = hex_to_rgba("red", 0.5)) |>
+  hc_add_series(mnthly_spy.open.trade$SPY.Low * 0.95, yAxis = 0, name = "Open Trade", type = "scatter", color = "green", marker = list(symbol = "triangle")) |>
+  hc_add_series(mnthly_spy.close.trade$SPY.High * 1.05, yAxis = 0, name = "Open Trade", type = "scatter", color = "red", marker = list(symbol = "triangle-down")) |>
+  hc_add_series(mnthly_spy.sma.5, id = 3, yAxis = 0, name = "SMA(5)", color = hex_to_rgba("violet", 0.5)) |>
   hc_add_series(mnthly_spy_xts, 
                 id = 1, 
                 dataGrouping = list(enabled = FALSE),
@@ -2450,7 +2457,7 @@ highchart(type = "stock") |>
               ) |>
   hc_add_series(fltr_spy_xts, id = 2, yAxis = 0, 
                 dataGrouping = list(enabled = FALSE), 
-                color = "forestgreen", lineColor = "forestgreen", 
+                color = "orange", lineColor = "orange", 
                 tooltip = list(pointFormat = paste0("Closed < 15% of Range"))
   ) |>
   hc_add_yAxis(nid = 1L, title = list(text = "Prices"), 
