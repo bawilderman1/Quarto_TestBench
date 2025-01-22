@@ -2467,3 +2467,57 @@ highchart(type = "stock") |>
   hc_add_series(mnthly_spy.rsi.overbought, yAxis = 1, name = "Overbought", color = hex_to_rgba("black", 0.7)) |>
   hc_add_yAxis(nid = 2L, title = list(text = "RSI(14)"), relative = 1)
 ```
+
+## Backtest Charts
+
+```{r}
+# view(bt_metrics$data_series)
+
+# chart_data <- bt_metrics$data_series |>
+#   mutate(SPY.Trade.Open = ifelse(as.logical(trd_entry), low * .95, NA),
+#          SPY.Trade.Close = ifelse(as.logical(trd_exit), high * 1.05, NA)) |>
+#   rename(Date = dt, SPY.Open = open, SPY.High = high, SPY.Low = low,
+#          SPY.Close = close, SPY.Dividend = dividend,
+#          SPY.Equity = eqty, SPY.Drawdown = drawdn) |>
+#   select(Date, SPY.Open, SPY.High, SPY.Low, SPY.Close,
+#          SPY.Trade.Open, SPY.Trade.Close, SPY.Equity, SPY.Drawdown) |>
+#   as.xts()
+# view(chart_data)
+
+highchart(type = "stock") |>
+  hc_title(text = "SPY - Backtest") |>
+  hc_add_theme(hc_theme_hcrt()) |>
+  hc_rangeSelector(selected = 0, buttons = list(
+    list(type = 'year', count = 5, text = '5y'),
+    list(type = 'year', count = 10, text = '10y'),
+    list(type = 'year', count = 15, text = '15y'),
+    list(type = 'all', text = 'All'))) |>
+  hc_add_series(chart_data[,5], yAxis = 0, name = "Open Trade", 
+                type = "scatter", color = "green", 
+                marker = list(symbol = "triangle")) |>
+  hc_add_series(chart_data[,6], yAxis = 0, name = "Open Trade", 
+                type = "scatter", color = "red", 
+                marker = list(symbol = "triangle-down")) |>
+  hc_add_series(chart_data[,1:4], 
+                id = 1, 
+                dataGrouping = list(enabled = FALSE),
+                color = "black", lineColor = "black",
+                tooltip = list(pointFormat = paste0(
+                    "Open: {point.open} <br/>",
+                    "High: {point.high} <br/>",
+                    "Low: {point.low} <br/>",
+                    "Close: {point.close} <br/>")),
+                yAxis = 0
+              ) |>
+  hc_add_yAxis(nid = 1L, title = list(text = "Prices"), 
+               relative = 3, type = "logarithmic") |>
+  hc_add_series(chart_data[,7], yAxis = 1, name = "Equity", 
+                color = "blue", type = "line") |>
+  hc_add_series(xts(rep(10000, NROW(chart_data)), index(chart_data)), 
+                yAxis = 1, name = "Initial", color = "black", type = "line") |>
+  hc_add_yAxis(nid = 2L, title = list(text = "Equity"), relative = 1) |>
+  hc_add_series(chart_data[,8], yAxis = 2, name = "Drawdown (%)", 
+                color = "darkred", type = "area") |>
+  hc_add_yAxis(nid = 3L, title = list(text = "Drawdown"), relative = 1)
+
+```
