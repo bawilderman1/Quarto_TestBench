@@ -2475,12 +2475,14 @@ highchart(type = "stock") |>
 
 # chart_data <- bt_metrics$data_series |>
 #   mutate(SPY.Trade.Open = ifelse(as.logical(trd_entry), low * .95, NA),
-#          SPY.Trade.Close = ifelse(as.logical(trd_exit), high * 1.05, NA)) |>
+#          SPY.Trade.Close = ifelse(as.logical(trd_exit), high * 1.05, NA),
+#          SPY.Drawdown = round(drawdn * 100, 2)) |>
 #   rename(Date = dt, SPY.Open = open, SPY.High = high, SPY.Low = low,
 #          SPY.Close = close, SPY.Dividend = dividend,
-#          SPY.Equity = eqty, SPY.Drawdown = drawdn) |>
+#          SPY.Equity = eqty, SPY.BuyAndHold = bnh_eqty) |>
 #   select(Date, SPY.Open, SPY.High, SPY.Low, SPY.Close,
-#          SPY.Trade.Open, SPY.Trade.Close, SPY.Equity, SPY.Drawdown) |>
+#          SPY.Trade.Open, SPY.Trade.Close, SPY.Equity, SPY.Drawdown,
+#          SPY.BuyAndHold) |>
 #   as.xts()
 # view(chart_data)
 
@@ -2511,13 +2513,21 @@ highchart(type = "stock") |>
               ) |>
   hc_add_yAxis(nid = 1L, title = list(text = "Prices"), 
                relative = 3, type = "logarithmic") |>
-  hc_add_series(chart_data[,7], yAxis = 1, name = "Equity", 
-                color = "blue", type = "line") |>
-  hc_add_series(xts(rep(10000, NROW(chart_data)), index(chart_data)), 
-                yAxis = 1, name = "Initial", color = "black", type = "line") |>
+  hc_add_series(chart_data[,7], yAxis = 1, name = "Equity", type = "area",
+                color = "green",
+                negativeColor = "red",
+                threshold = 10000, opacity = 0.75) |>
+  hc_add_series(chart_data[,9], yAxis = 1, name = "Buy&Hold",
+                color = "blue", type = "line",
+                tooltip = list(
+                  pointFormatter = JS("function() { return '<tr><td style=\"color: ' + this.series.color + '\">' + this.series.name + ': </td>' + '<td style=\"text-align: right\"><b>' +  new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(this.y) + '</b></td></tr>'; }"))
+                ) |>
   hc_add_yAxis(nid = 2L, title = list(text = "Equity"), relative = 1) |>
-  hc_add_series(chart_data[,8], yAxis = 2, name = "Drawdown (%)", 
-                color = "darkred", type = "area") |>
-  hc_add_yAxis(nid = 3L, title = list(text = "Drawdown"), relative = 1)
+  hc_add_series(chart_data[,8], yAxis = 2, name = "Drawdown", 
+                color = "darkred", type = "area",
+                tooltip = list(pointFormat = paste0("{series.name}: {point.y}%"))
+                ) |>
+  hc_add_yAxis(nid = 3L, title = list(text = "Drawdown"), relative = 1,
+               labels = list(format = paste0("{value}%")))
 
 ```
