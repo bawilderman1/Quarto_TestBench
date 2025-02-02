@@ -2473,42 +2473,44 @@ highchart(type = "stock") |>
 ```{r}
 # view(bt_metrics$data_series)
 
-# chart_data <- bt_metrics$data_series |>
-#   mutate(SPY.Trade.Open = ifelse(as.logical(trd_entry), low * .95, NA),
-#          SPY.Trade.Close = ifelse(as.logical(trd_exit), high * 1.05, NA),
-#          SPY.Drawdown = round(drawdn * 100, 2)) |>
-#   rename(Date = dt, SPY.Open = open, SPY.High = high, SPY.Low = low,
-#          SPY.Close = close, SPY.Dividend = dividend,
-#          SPY.Equity = eqty, SPY.BuyAndHold = bnh_eqty) |>
-#   select(Date, SPY.Open, SPY.High, SPY.Low, SPY.Close,
-#          SPY.Trade.Open, SPY.Trade.Close, SPY.Equity, SPY.Drawdown,
-#          SPY.BuyAndHold) |>
-#   as.xts()
+chart_data <- bt_metrics$data_series |>
+  mutate(SPY.Trade.Open = ifelse(as.logical(trd_entry), low * .95, NA),
+         SPY.Trade.Close = ifelse(as.logical(trd_exit), high * 1.05, NA),
+         SPY.Drawdown = round(drawdn * 100, 2)) |>
+  rename(Date = dt, SPY.Open = open, SPY.High = high, SPY.Low = low,
+         SPY.Close = close, SPY.Dividend = dividend,
+         SPY.Equity = eqty, SPY.BuyAndHold = bnh_eqty) |>
+  select(Date, SPY.Open, SPY.High, SPY.Low, SPY.Close,
+         SPY.Trade.Open, SPY.Trade.Close, SPY.Equity, SPY.Drawdown,
+         SPY.BuyAndHold) |>
+  as.xts()
 # view(chart_data)
 
 highchart(type = "stock") |>
   hc_title(text = "SPY - Backtest") |>
   hc_add_theme(hc_theme_hcrt()) |>
-  hc_rangeSelector(selected = 0, buttons = list(
+  hc_rangeSelector(selected = 1, buttons = list(
+    list(type = 'year', count = 1, text = '1y'),
     list(type = 'year', count = 5, text = '5y'),
     list(type = 'year', count = 10, text = '10y'),
     list(type = 'year', count = 15, text = '15y'),
     list(type = 'all', text = 'All'))) |>
   hc_add_series(chart_data[,5], yAxis = 0, name = "Open Trade", 
                 type = "scatter", color = "green", 
-                marker = list(symbol = "triangle")) |>
-  hc_add_series(chart_data[,6], yAxis = 0, name = "Open Trade", 
+                marker = list(symbol = "triangle"),
+                tooltip = list(pointFormat = NULL)) |>
+  hc_add_series(chart_data[,6], yAxis = 0, name = "Close Trade", 
                 type = "scatter", color = "red", 
-                marker = list(symbol = "triangle-down")) |>
+                marker = list(symbol = "triangle-down"),
+                tooltip = list(pointFormat = NULL)) |>
   hc_add_series(chart_data[,1:4], 
                 id = 1, 
                 dataGrouping = list(enabled = FALSE),
                 color = "black", lineColor = "black",
-                tooltip = list(pointFormat = paste0(
-                    "Open: {point.open} <br/>",
-                    "High: {point.high} <br/>",
-                    "Low: {point.low} <br/>",
-                    "Close: {point.close} <br/>")),
+                name = "SPY",
+                tooltip = list(
+                  pointFormatter = JS("function() { return '<span style=\"color:' + this.series.lineColor + '\">●</span> <b>' + this.series.name + '</b><br/>Open: <b>' + new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(this.open) + '</b> <br/>High: <b>' + new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(this.high) + '</b> <br/>Low: <b>' + new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(this.low) + '</b> <br/>Close: <b>' + new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(this.close) + '</b> <br/>'; }")
+                ),
                 yAxis = 0
               ) |>
   hc_add_yAxis(nid = 1L, title = list(text = "Prices"), 
@@ -2516,16 +2518,19 @@ highchart(type = "stock") |>
   hc_add_series(chart_data[,7], yAxis = 1, name = "Equity", type = "area",
                 color = "green",
                 negativeColor = "red",
-                threshold = 10000, opacity = 0.75) |>
-  hc_add_series(chart_data[,9], yAxis = 1, name = "Buy&Hold",
+                threshold = 10000, opacity = 0.75,
+               tooltip = list(
+                 pointFormatter = JS("function() { return '<span style=\"color:' + this.series.color + ';\">●</span>' + this.series.name + ': ' + '<b>' +  new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(this.y) + '</b>'; }")
+               )) |>
+  hc_add_series(chart_data[,9], yAxis = 1, name = "Buy & Hold",
                 color = "blue", type = "line",
                 tooltip = list(
-                  pointFormatter = JS("function() { return '<tr><td style=\"color: ' + this.series.color + '\">' + this.series.name + ': </td>' + '<td style=\"text-align: right\"><b>' +  new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(this.y) + '</b></td></tr>'; }"))
+                  pointFormatter = JS("function() { return '<span style=\"color:' + this.series.color + ';\">●</span>' + this.series.name + ': ' + '<b>' +  new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(this.y) + '</b>'; }"))
                 ) |>
   hc_add_yAxis(nid = 2L, title = list(text = "Equity"), relative = 1) |>
   hc_add_series(chart_data[,8], yAxis = 2, name = "Drawdown", 
                 color = "darkred", type = "area",
-                tooltip = list(pointFormat = paste0("{series.name}: {point.y}%"))
+                tooltip = list(pointFormat = paste0("<span style=\"color:{series.color}\">●</span> {series.name}: <b>{point.y}%</b>"))
                 ) |>
   hc_add_yAxis(nid = 3L, title = list(text = "Drawdown"), relative = 1,
                labels = list(format = paste0("{value}%")))
