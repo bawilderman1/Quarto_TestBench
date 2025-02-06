@@ -2536,3 +2536,23 @@ highchart(type = "stock") |>
                labels = list(format = paste0("{value}%")))
 
 ```
+
+```{r}
+#view(bt_metrics$data_trd)
+
+hchart(bt_metrics$data_trd, 
+       "scatter", 
+       hcaes(x = trd_pnl_pct, 
+             y = max_trd_drawdn, 
+             group = trd_rslt)) |>
+  hc_add_theme(hc_theme_hcrt()) |>
+  hc_title(text = "Backtest - PnL vs. Max Drawdown") |>
+  hc_xAxis(title = list(text = "Trade Profit and Loss"),
+           plotLines = list(
+             list(dashStyle = "Dash", value = 0, color = "black", zIndex = 3)
+           )) |>
+  hc_yAxis(title = list(text = "Max Trade Drawdown"),
+           plotLines = list(
+             list(dashStyle = "Dash", value = -0.11, color = "black", zIndex = 3)
+           ))
+```
