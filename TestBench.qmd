@@ -824,11 +824,11 @@ bt_sim_func <- \(tbl,
     group_by(trd_num) |>
     mutate(is_closed = max(trd_exit),
            trd_length = row_number(),
+           trd_base = round(first(open) * first(pos_size), 2),
            trd_drawdn = round(log(eqty / slide_max(eqty, before=Inf)), 4),
-           trd_drawup = round(log(eqty / slide_min(eqty, before=Inf)), 4),
-           trd_ur_drawdn = round(log(eqty_l / slide_max(eqty_h, before=Inf)), 4),
-           trd_ur_drawup = round(log(eqty_h / slide_min(eqty_l, before=Inf)), 4),
-           trd_base = round(first(open) * first(pos_size), 2)) |>
+           trd_drawup = round(log(eqty / trd_base), 4),
+           trd_ur_drawdn = round(log(eqty / slide_max(eqty_h, before=Inf)), 4),
+           trd_ur_drawup = round(log(eqty_h / trd_base), 4)) |>
     ungroup() |>
     mutate(trd_num = if_else(pos_size == 0, NA, trd_num),
            trd_length = if_else(pos_size == 0, NA, trd_length),
@@ -1810,7 +1810,7 @@ hchart(bt_metrics$data_trd |>
              list(dashStyle = "Dash", value = 0, color = "black", zIndex = 3)
            )) |>
   hc_yAxis(title = list(text = "Max Trade Drawdown")) |>
-  hc_tooltip(useHTML = TRUE, pointFormat = tltip, title = "foobar")
+  hc_tooltip(useHTML = TRUE, pointFormat = tltip, headerFormat = paste0("<span style=\"color:{series.color}\">●</span> <b style=\"color:{series.color};font-size:1rem;\">{series.name}</b>"))
 ```
 
 ```{r}
@@ -1819,13 +1819,42 @@ hchart(bt_metrics$data_trd |>
 hchart(bt_metrics$data_trd, 
        "scatter", 
        hcaes(x = trd_pnl_pct, 
-             y = max_trd_drawup, 
+             y = max_ur_drawup, 
              group = trd_rslt)) |>
   hc_add_theme(hc_theme_hcrt()) |>
-  hc_title(text = "Backtest - PnL vs. Max Unrealized Value") |>
+  hc_title(text = "Backtest - PnL vs. Max Unrealized Gain") |>
   hc_xAxis(title = list(text = "Trade Profit and Loss"),
            plotLines = list(
              list(dashStyle = "Dash", value = 0, color = "black", zIndex = 3)
            )) |>
-  hc_yAxis(title = list(text = "Max Unrealized Value"))
+  hc_yAxis(title = list(text = "Max Unrealized Value")) |>
+  hc_tooltip(
+    useHTML = TRUE,  # Important for complex tooltips
+    formatter = JS(
+      "function() {
+        let point = this.point;
+        let tableRows = `
+          <tr><th>Trade #:</th><td>${point.trd_num}</td></tr>
+          <tr><th>Profit/Loss:</th><td>${(point.x).toLocaleString(undefined, {style: 'percent', maximumFractionDigits: 2})}</td></tr>
+          <tr><th>Max Gain:</th><td>${(point.y).toLocaleString(undefined, {style: 'percent', maximumFractionDigits: 2})}</td></tr>
+        `; // Construct table rows
+  
+        return `
+          <div style='background-color: rgba(255, 255, 255, 0.8); padding: 2px; border-radius: 5px;'>
+            <table>
+              <thead>
+                <tr><th colspan='2' style='text-align: center;'>
+                  <span style='color:${this.series.color}'>●</span>
+                  <span style='color:${this.series.color};font-size:1.05rem;'>${point.trd_rslt}</span>
+                </th></tr>
+              </thead>
+              <tbody>
+                ${tableRows}
+              </tbody>
+            </table>
+          </div>
+        `; // Return the complete HTML tooltip content
+      }"
+    )
+  )
 ```
