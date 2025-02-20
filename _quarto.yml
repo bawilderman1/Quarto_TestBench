@@ -3,3 +3,8 @@ project:
 
 editor: visual
 
+engines:
+  Rcpp:
+    cpp_options:
+      include: "src/include"
+      linker: "src/macd.cpp"
