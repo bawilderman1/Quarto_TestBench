@@ -35,6 +35,12 @@ Rcpp::List macd(const Rcpp::NumericVector& data, int short_period, int long_peri
   
   std::vector<double> signal_line = ema(macd_line, signal_period);
   
+  // Round the MACD and Signal lines to 3 decimal places
+  for (size_t i = 0; i < macd_line.size(); ++i) {
+    macd_line[i] = std::round(macd_line[i] * 1000.0) / 1000.0;
+    signal_line[i] = std::round(signal_line[i] * 1000.0) / 1000.0;
+  }
+  
   std::vector<double> histogram(data.size());
   for (size_t i = 0; i < data.size(); ++i) {
     histogram[i] = macd_line[i] - signal_line[i];
@@ -61,6 +67,12 @@ Rcpp::DataFrame macdTbl(const Rcpp::NumericVector& data, int short_period, int l
   }
   
   std::vector<double> signal_line = ema(macd_line, signal_period);
+  
+  // Round the MACD and Signal lines to 3 decimal places
+  for (size_t i = 0; i < macd_line.size(); ++i) {
+    macd_line[i] = std::round(macd_line[i] * 1000.0) / 1000.0;
+    signal_line[i] = std::round(signal_line[i] * 1000.0) / 1000.0;
+  }
   
   std::vector<double> histogram(data.size());
   for (size_t i = 0; i < data.size(); ++i) {
