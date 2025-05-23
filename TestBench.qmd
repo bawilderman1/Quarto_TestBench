@@ -1692,6 +1692,7 @@ highchart(type = "stock") |>
   #            headerFormat = "{pointer.key}",
   #            pointFormat = tool_tip,
   #            distance = 10) |>
+  hc_navigator(height = 0) |>
   hc_add_series(mnthly_spy.open.trade$SPY.Low * 0.95, yAxis = 0, name = "Open Trade", type = "scatter", color = "green", marker = list(symbol = "triangle")) |>
   hc_add_series(mnthly_spy.close.trade$SPY.High * 1.05, yAxis = 0, name = "Open Trade", type = "scatter", color = "red", marker = list(symbol = "triangle-down")) |>
   hc_add_series(mnthly_spy.sma.5, id = 3, yAxis = 0, name = "SMA(5)", color = hex_to_rgba("violet", 0.5)) |>
@@ -2079,11 +2080,14 @@ chart_with_ma_macd <- build_stock_chart(
 chart_with_ma_macd
 ```
 
+### TODO
+
 ```{r}
-#| cache: false
+# Refactoring data column names
 
 # TODO:
-# figure out a better lable strategy for ohlc symbol then hardcoding
+# add Zero as return from MACD
+# refactor into backtesting functions
 
 # library(TTR)
 # sourceCpp("src/macd.cpp")
@@ -2092,34 +2096,37 @@ chart_with_ma_macd
 chart_data2 <- bt_metrics$data_series |>
   mutate(Trade.Open = ifelse(as.logical(trd_entry), low * .95, NA),
          Trade.Close = ifelse(as.logical(trd_exit), high * 1.05, NA),
-         macdTbl(close, 12, 26, 9), 
-         Zero = 0) |>
+         #macdTbl(close, 12, 26, 9),
+         #Zero = 0
+         ) |>
   rename(Date = dt, Open = open, High = high, Low = low,
          Close = close, Dividend = dividend,
          Equity = eqty, BuyAndHold = bnh_eqty,
          Drawdown = drawdn,
-         #SPY.MACD = MACD, 
-         MACD.Signal = Signal, MACD.Hist = Histogram) |>
+         #SPY.MACD = MACD,
+         #MACD.Signal = Signal, MACD.Hist = Histogram
+         ) |>
   select(Date, Open, High, Low, Close,
          Trade.Open, Trade.Close, Equity, Drawdown,
-         BuyAndHold, MACD, MACD.Signal, MACD.Hist,
-         Zero) |>
+         BuyAndHold, #MACD, MACD.Signal, MACD.Hist,
+         #Zero
+         ) |>
   as.xts()
 # view(chart_data2)
 
 # !--- Lists to create highcharter stock chart with configurable functions----!
-ohlc_tooltip_js <- readChar(
-  "src/js/ohlc_tooltip.js",
-  file.info("src/js/ohlc_tooltip.js")$size)
-currency_tooltip_js <- readChar(
-  "src/js/currency_tooltip.js",
-  file.info("src/js/currency_tooltip.js")$size)
-percent_tooltip_js <- readChar(
-  "src/js/percent_tooltip.js",
-  file.info("src/js/percent_tooltip.js")$size)
-axis_label_percent_js <- readChar(
-  "src/js/axis_label_percent.js",
-  file.info("src/js/axis_label_percent.js")$size)
+# ohlc_tooltip_js <- readChar(
+#   "src/js/ohlc_tooltip.js",
+#   file.info("src/js/ohlc_tooltip.js")$size)
+# currency_tooltip_js <- readChar(
+#   "src/js/currency_tooltip.js",
+#   file.info("src/js/currency_tooltip.js")$size)
+# percent_tooltip_js <- readChar(
+#   "src/js/percent_tooltip.js",
+#   file.info("src/js/percent_tooltip.js")$size)
+# axis_label_percent_js <- readChar(
+#   "src/js/axis_label_percent.js",
+#   file.info("src/js/axis_label_percent.js")$size)
 
 # --- Dynamic Configuration Functions ---
 create_yaxis_config <- function(include_technical_indicator = FALSE) {
@@ -2128,7 +2135,7 @@ create_yaxis_config <- function(include_technical_indicator = FALSE) {
   if (include_technical_indicator) {
     yaxis_list[["technical_indicator_axis"]] <- list(
       nid = 0L,
-      title = list(text = "Technical Indicator"),
+      title = list(text = "Indicator"),
       relative = 1)
     price_axis_nid <- 1L
     equity_axis_nid <- 2L
@@ -2277,7 +2284,8 @@ build_stock_chart <- function(
       list(type = 'year', count = 5, text = '5y'),
       list(type = 'year', count = 10, text = '10y'),
       list(type = 'year', count = 15, text = '15y'),
-      list(type = 'all', text = 'All')))
+      list(type = 'all', text = 'All'))) |>
+    hc_navigator(height = 0)
 
   # Pass the optional_price_series_config to create_series_config
   yaxis_config <- create_yaxis_config(include_technical_indicator)
@@ -2302,6 +2310,11 @@ build_stock_chart <- function(
 }
 
 # --- Example Usage ---
+macd_data <- macd(chart_data2$Close, 12, 26, 9)
+chart_data2$MACD <- macd_data$MACD
+chart_data2$MACD.Signal <- macd_data$Signal
+rm(macd_data)
+chart_data2$Zero <- xts(rep(0, NROW(chart_data2)), index (chart_data2))
 
 # Define MACD technical indicator configuration
 macd_indicator_config <- list(
@@ -2319,8 +2332,9 @@ macd_indicator_config <- list(
   zero_series = list(
     data = chart_data2[,"Zero"],
     yAxis = 0L,
-    name = "Zero",
-    color = hex_to_rgba("black", 0.7)
+    #name = "Zero",
+    color = hex_to_rgba("black", 0.7),
+    tooltip = list(enabled = FALSE, pointFormat = NULL)
   )
 )
 
@@ -2434,7 +2448,7 @@ hchart(bt_metrics$data_trd,
 ### C++ Indicators
 
 ```{r}
-# sourceCpp("src/macd.cpp")
+sourceCpp("src/macd.cpp")
 
 # Example usage with List:
 # data <- rnorm(100) # Example data
