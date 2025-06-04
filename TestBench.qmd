@@ -1723,110 +1723,6 @@ highchart(type = "stock") |>
 ## Backtest Charts
 
 ```{r}
-sourceCpp("src/macd.cpp")
-# view(bt_metrics$data_series)
-
-chart_data <- bt_metrics$data_series |>
-  mutate(#SPY.Trade.Open = ifelse(as.logical(trd_entry), low * .95, NA),
-         #SPY.Trade.Close = ifelse(as.logical(trd_exit), high * 1.05, NA),
-         macdTbl(close, 12, 26, 9),
-         Zero = 0) |>
-  rename(Date = dt, SPY.Open = open, SPY.High = high, SPY.Low = low,
-         SPY.Close = close, 
-         # SPY.Dividend = dividend,
-         # SPY.Equity = eqty, SPY.BuyAndHold = bnh_eqty,
-         # SPY.Drawdown = drawdn,
-         SPY.MACD = MACD, SPY.MACD.Signal = Signal, SPY.MACD.Hist = Histogram
-         ) |>
-  select(Date, SPY.Open, SPY.High, SPY.Low, SPY.Close,
-         # SPY.Trade.Open, SPY.Trade.Close, SPY.Equity, SPY.Drawdown,
-         # SPY.BuyAndHold, 
-         SPY.MACD, SPY.MACD.Signal, SPY.MACD.Hist,
-         Zero
-         ) |>
-  arrange(Date) # |>
-  #as.xts()
-# view(chart_data)
-
- 
-
-# Convert Date to milliseconds since epoch
-chart_data <- chart_data |>
-  mutate(Date = datetime_to_timestamp(as.POSIXct(Date, tz = "UTC")))
-
-# open_trades <- chart_data |>
-#   filter(!is.na(SPY.Trade.Open))
-# 
-# close_trades <- chart_data |>
-#   filter(!is.na(SPY.Trade.Close))
-
-highchart(type = "stock") |>
-  hc_title(text = "SPY - Backtest") |>
-  hc_add_theme(hc_theme_hcrt()) |>
-  hc_rangeSelector(selected = 1, buttons = list(
-    list(type = 'year', count = 1, text = '1y'),
-    list(type = 'year', count = 5, text = '5y'),
-    list(type = 'year', count = 10, text = '10y'),
-    list(type = 'year', count = 15, text = '15y'),
-    list(type = 'all', text = 'All'))) |>
-  hc_add_series(data = (chart_data |> select(Date, SPY.MACD) |> na.omit()), 
-                hcaes(x = Date, y = SPY.MACD), yAxis = 0, name = "MACD",
-                type = "line", color = "cyan") |>
-  hc_add_series(data = (chart_data |> select(Date, SPY.MACD.Signal) |> na.omit()), 
-                hcaes(x = Date, y = SPY.MACD.Signal), yAxis = 0, name = "Signal",
-                color = hex_to_rgba("black", 0.7)) |>
-  # hc_add_series(data = chart_data, hcaes(x = Date, y = Zero), yAxis = 0, name = "Zero",
-  #               color = hex_to_rgba("black", 0.7)) |>
-  hc_add_yAxis(nid = 1L, title = list(text = "MACD"), relative = 1) |>
-  # hc_add_series(data = open_trades, hcaes(x = Date, y = SPY.Trade.Open), yAxis = 1, name = "Open Trade", 
-  #               type = "scatter", color = "green", 
-  #               marker = list(symbol = "triangle"),
-  #               tooltip = list(pointFormat = NULL)) |>
-  # hc_add_series(data = close_trades, hcaes(x = Date, y = SPY.Trade.Close), yAxis = 1, name = "Close Trade", 
-  #               type = "scatter", color = "red", 
-  #               marker = list(symbol = "triangle-down"),
-  #               tooltip = list(pointFormat = NULL)) |>
-  hc_add_series(data = chart_data,
-                mapping = hcaes(x = Date, 
-                                open = SPY.Open, 
-                                high = SPY.High, 
-                                low = SPY.Low, 
-                                close = SPY.Close),
-                type = "candlestick",
-                yAxis = 1,
-                id = 1,
-                dataGrouping = list(enabled = FALSE),
-                color = "black", lineColor = "black",
-                name = "SPY",
-                tooltip = list(
-                  pointFormatter = JS("function() { return '<span style=\"color:' + this.series.lineColor + '\">●</span> <b>' + this.series.name + '</b><br/>Open: <b>' + new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(this.open) + '</b> <br/>High: <b>' + new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(this.high) + '</b> <br/>Low: <b>' + new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(this.low) + '</b> <br/>Close: <b>' + new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(this.close) + '</b> <br/>'; }")
-                )
-              ) |>
-  hc_add_yAxis(nid = 2L, title = list(text = "Prices"), 
-               relative = 3, type = "logarithmic") #|>
-  # hc_add_series(data = chart_data, hcaes(x = Date, y = SPY.Equity), yAxis = 2, name = "Equity", 
-  #               type = "area",
-  #               color = "green",
-  #               negativeColor = "red",
-  #               threshold = 10000, opacity = 0.75,
-  #               tooltip = list(
-  #                 pointFormatter = JS("function() { return '<span style=\"color:' + this.series.color + ';\">●</span>' + this.series.name + ': ' + '<b>' +  new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(this.y) + '</b>'; }")
-  #              )) |>
-  # hc_add_series(data = chart_data, hcaes(x = Date, y = SPY.BuyAndHold), yAxis = 2, name = "Buy & Hold",
-  #               color = "blue", type = "line",
-  #               tooltip = list(
-  #                 pointFormatter = JS("function() { return '<span style=\"color:' + this.series.color + ';\">●</span>' + this.series.name + ': ' + '<b>' +  new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(this.y) + '</b>'; }"))
-  #               ) |>
-  # hc_add_yAxis(nid = 3L, title = list(text = "Equity"), relative = 1) |>
-  # hc_add_series(data = chart_data, hcaes(x = Date, y = SPY.Drawdown), yAxis = 3, name = "Drawdown", 
-  #               color = "darkred", type = "area",
-  #               tooltip = list(pointFormatter = JS("function() { return '<span style=\"color:' + this.series.color + ';\">●</span>' + this.series.name + ': ' + '<b>' + new Intl.NumberFormat('en-US', {style: 'percent', minimumFractionDigits: 2, maximumFractionDigits: 2}).format(this.y) + '</b>'; }"))
-  #               ) |>
-  # hc_add_yAxis(nid = 4L, title = list(text = "Drawdown"), relative = 1,
-  #              labels = list(format = paste0("{value}%")))
-```
-
-```{r}
 library(dplyr)
 library(highcharter)
 
@@ -2231,8 +2127,8 @@ chart_with_ma_macd
 # TODO:
 # refactor into backtesting functions
 
-library(TTR)
-sourceCpp("src/macd.cpp")
+# library(TTR)
+# sourceCpp("src/macd.cpp")
 # view(bt_metrics$data_series)
 
 chart_data2 <- bt_metrics$data_series |>
@@ -2246,275 +2142,264 @@ chart_data2 <- bt_metrics$data_series |>
          Trade.Open, Trade.Close, Equity, Drawdown, BuyAndHold) |>
   as.xts()
 # view(chart_data2)
-
-# !--- Lists to create highcharter stock chart with configurable functions----!
-ohlc_tooltip_js <- readChar(
-  "src/js/ohlc_tooltip.js",
-  file.info("src/js/ohlc_tooltip.js")$size)
-currency_tooltip_js <- readChar(
-  "src/js/currency_tooltip.js",
-  file.info("src/js/currency_tooltip.js")$size)
-percent_tooltip_js <- readChar(
-  "src/js/percent_tooltip.js",
-  file.info("src/js/percent_tooltip.js")$size)
-axis_label_percent_js <- readChar(
-  "src/js/axis_label_percent.js",
-  file.info("src/js/axis_label_percent.js")$size)
-
-# --- Dynamic Configuration Functions ---
-create_yaxis_config <- function(include_technical_indicator = FALSE) {
-  yaxis_list <- list()
-
-  if (include_technical_indicator) {
-    yaxis_list[["technical_indicator_axis"]] <- list(
-      nid = 0L,
-      title = list(text = "Indicator"),
-      relative = 1)
-    price_axis_nid <- 1L
-    equity_axis_nid <- 2L
-    drawdown_axis_nid <- 3L
-  } else {
-    price_axis_nid <- 0L
-    equity_axis_nid <- 1L
-    drawdown_axis_nid <- 2L
-  }
-
-  yaxis_list[["price_axis"]] <- list(
-    nid = price_axis_nid,
-    title = list(text = "Prices"),
-    relative = 3,
-    type = "logarithmic")
-  yaxis_list[["equity_axis"]] <- list(
-    nid = equity_axis_nid,
-    title = list(text = "Equity"),
-    relative = 1)
-  yaxis_list[["drawdown_axis"]] <- list(
-    nid = drawdown_axis_nid,
-    title = list(text = "Drawdown"),
-    relative = 1,
-    labels = list(formatter = JS(axis_label_percent_js))
-  )
-
-  attr(yaxis_list, "price_axis_nid") <- price_axis_nid # Store NID as an attribute for easy lookup
-  return(yaxis_list)
-}
-
-create_series_config <- function(
-    chart_data,
-    technical_indicator_series = NULL,
-    optional_price_series = NULL) {
-  series_list <- list()
-  y_axis_offset <- 0L # Initialize offset
-
-  # --- Add Technical Indicator Series (if any) ---
-  # These come first and potentially shift the axis NIDs for others
-  if (!is.null(technical_indicator_series)) {
-    y_axis_offset <- 1L # Shift yAxis indices for OHLC, Equity, Drawdown if technical indicator is present
-    # Add technical indicator series
-    for (series_name in names(technical_indicator_series)) {
-      series_list[[series_name]] <- technical_indicator_series[[series_name]]
-    }
-  }
-
-  # Determine the correct NID for the price axis based on the offset
-  price_axis_nid <- 0L + y_axis_offset
-
-  # --- Add Standard Price Axis Series ---
-  # Ensure column names match your actual chart_data xts object
-  # Example column names used here: "SPY.Trade.Open", "SPY.Open", etc.
-  series_list[["trade_open_series"]] <- list(
-    data = chart_data2[,"Trade.Open"],
-    yAxis = price_axis_nid,
-    name = "Open Trade",
-    type = "scatter",
-    color = "green",
-    marker = list(symbol = "triangle"),
-    tooltip = list(pointFormat = NULL)
-  )
-  series_list[["trade_close_series"]] <- list(
-    data = chart_data2[,"Trade.Close"],
-    yAxis = price_axis_nid,
-    name = "Close Trade",
-    type = "scatter",
-    color = "red",
-    marker = list(symbol = "triangle-down"),
-    tooltip = list(pointFormat = NULL)
-  )
-  series_list[["ohlc_series"]] <- list(
-    data = chart_data2[,c("Open", "High", "Low", "Close")],
-    yAxis = price_axis_nid,
-    id = 1,
-    dataGrouping = list(enabled = FALSE),
-    color = "black",
-    lineColor = "black",
-    name = "SPY",
-    tooltip = list(pointFormatter = JS(ohlc_tooltip_js))
-  )
-
-
-  # --- Add Optional Price Axis Series (if any) ---
-  # These are added AFTER the standard price axis series
-  if (!is.null(optional_price_series)) {
-    for (series_name in names(optional_price_series)) {
-      current_series_config <- optional_price_series[[series_name]]
-      # Ensure the optional series are assigned to the correct price axis NID
-      current_series_config$yAxis <- price_axis_nid
-      series_list[[series_name]] <- current_series_config
-    }
-  }
-
-  # --- Add Other Standard Series ---
-  # These use yAxis indices relative to the offset as before
-  # Ensure column names match your actual chart_data xts object
-  series_list[["equity_series"]] <- list(
-    data = chart_data2[,"Equity"],
-    yAxis = 1L + y_axis_offset,
-    name = "Equity",
-    type = "area",
-    color = "green",
-    negativeColor = "red",
-    threshold = 10000,
-    opacity = 0.75,
-    tooltip = list(pointFormatter = JS(currency_tooltip_js))
-  )
-  series_list[["buy_and_hold_series"]] <- list(
-    data = chart_data2[,"BuyAndHold"],
-    yAxis = 1L + y_axis_offset,
-    name = "Buy & Hold",
-    color = "blue",
-    type = "line",
-    tooltip = list(pointFormatter = JS(currency_tooltip_js))
-  )
-  series_list[["drawdown_series"]] <- list(
-    data = chart_data2[,"Drawdown"],
-    yAxis = 2L + y_axis_offset,
-    name = "Drawdown",
-    color = "darkred",
-    type = "area",
-    tooltip = list(pointFormatter = JS(percent_tooltip_js))
-  )
-
-  series_list
-}
-
-
-# --- Chart Building Logic ---
-
-build_stock_chart <- function(
-    chart_data, 
-    chart_title = "Backtest",
-    chart_theme = hc_theme_hcrt(),
-    technical_indicator_config = NULL,
-    optional_price_series_config = NULL) {
-  # Determine if we should include the axis
-  include_technical_indicator <- !is.null(technical_indicator_config) 
-
-  hc <- highchart(type = "stock") |>
-    hc_title(text = chart_title) |>
-    hc_add_theme(chart_theme) |>
-    hc_rangeSelector(selected = 1, buttons = list(
-      list(type = 'year', count = 1, text = '1y'),
-      list(type = 'year', count = 5, text = '5y'),
-      list(type = 'year', count = 10, text = '10y'),
-      list(type = 'year', count = 15, text = '15y'),
-      list(type = 'all', text = 'All'))) |>
-    hc_navigator(height = 0)
-
-  # Pass the optional_price_series_config to create_series_config
-  yaxis_config <- create_yaxis_config(include_technical_indicator)
-  series_config <- create_series_config(
-    chart_data2,
-    technical_indicator_series = technical_indicator_config,
-    optional_price_series = optional_price_series_config)
-
-
-  # Add y-axes first
-  for (axis_name in names(yaxis_config)) {
-    if (!inherits(yaxis_config[[axis_name]], "list")) next # Skip attributes etc.
-    hc <- add_yaxis_hc(hc, yaxis_config[[axis_name]])
-  }
-
-  # Add series
-  for (series_name in names(series_config)) {
-    hc <- add_series_hc(hc, series_config[[series_name]])
-  }
-
-  hc
-}
+# 
+# # !--- Lists to create highcharter stock chart with configurable functions----!
+# ohlc_tooltip_js <- readChar(
+#   "src/js/ohlc_tooltip.js",
+#   file.info("src/js/ohlc_tooltip.js")$size)
+# currency_tooltip_js <- readChar(
+#   "src/js/currency_tooltip.js",
+#   file.info("src/js/currency_tooltip.js")$size)
+# percent_tooltip_js <- readChar(
+#   "src/js/percent_tooltip.js",
+#   file.info("src/js/percent_tooltip.js")$size)
+# axis_label_percent_js <- readChar(
+#   "src/js/axis_label_percent.js",
+#   file.info("src/js/axis_label_percent.js")$size)
+# 
+# # --- Dynamic Configuration Functions ---
+# create_yaxis_config <- function(include_technical_indicator = FALSE) {
+#   yaxis_list <- list()
+# 
+#   if (include_technical_indicator) {
+#     yaxis_list[["technical_indicator_axis"]] <- list(
+#       nid = 0L,
+#       title = list(text = "Indicator"),
+#       relative = 1)
+#     price_axis_nid <- 1L
+#     equity_axis_nid <- 2L
+#     drawdown_axis_nid <- 3L
+#   } else {
+#     price_axis_nid <- 0L
+#     equity_axis_nid <- 1L
+#     drawdown_axis_nid <- 2L
+#   }
+# 
+#   yaxis_list[["price_axis"]] <- list(
+#     nid = price_axis_nid,
+#     title = list(text = "Prices"),
+#     relative = 3,
+#     type = "logarithmic")
+#   yaxis_list[["equity_axis"]] <- list(
+#     nid = equity_axis_nid,
+#     title = list(text = "Equity"),
+#     relative = 1)
+#   yaxis_list[["drawdown_axis"]] <- list(
+#     nid = drawdown_axis_nid,
+#     title = list(text = "Drawdown"),
+#     relative = 1,
+#     labels = list(formatter = JS(axis_label_percent_js))
+#   )
+# 
+#   attr(yaxis_list, "price_axis_nid") <- price_axis_nid # Store NID as an attribute for easy lookup
+#   return(yaxis_list)
+# }
+# 
+# create_series_config <- function(
+#     chart_data,
+#     technical_indicator_series = NULL,
+#     optional_price_series = NULL) {
+#   series_list <- list()
+#   y_axis_offset <- 0L # Initialize offset
+# 
+#   # --- Add Technical Indicator Series (if any) ---
+#   # These come first and potentially shift the axis NIDs for others
+#   if (!is.null(technical_indicator_series)) {
+#     y_axis_offset <- 1L # Shift yAxis indices for OHLC, Equity, Drawdown if technical indicator is present
+#     # Add technical indicator series
+#     for (series_name in names(technical_indicator_series)) {
+#       series_list[[series_name]] <- technical_indicator_series[[series_name]]
+#     }
+#   }
+# 
+#   # Determine the correct NID for the price axis based on the offset
+#   price_axis_nid <- 0L + y_axis_offset
+# 
+#   # --- Add Standard Price Axis Series ---
+#   # Ensure column names match your actual chart_data xts object
+#   # Example column names used here: "SPY.Trade.Open", "SPY.Open", etc.
+#   series_list[["trade_open_series"]] <- list(
+#     data = chart_data2[,"Trade.Open"],
+#     yAxis = price_axis_nid,
+#     name = "Open Trade",
+#     type = "scatter",
+#     color = "green",
+#     marker = list(symbol = "triangle"),
+#     tooltip = list(pointFormat = NULL)
+#   )
+#   series_list[["trade_close_series"]] <- list(
+#     data = chart_data2[,"Trade.Close"],
+#     yAxis = price_axis_nid,
+#     name = "Close Trade",
+#     type = "scatter",
+#     color = "red",
+#     marker = list(symbol = "triangle-down"),
+#     tooltip = list(pointFormat = NULL)
+#   )
+#   series_list[["ohlc_series"]] <- list(
+#     data = chart_data2[,c("Open", "High", "Low", "Close")],
+#     yAxis = price_axis_nid,
+#     id = 1,
+#     dataGrouping = list(enabled = FALSE),
+#     color = "black",
+#     lineColor = "black",
+#     name = "SPY",
+#     tooltip = list(pointFormatter = JS(ohlc_tooltip_js))
+#   )
+# 
+# 
+#   # --- Add Optional Price Axis Series (if any) ---
+#   # These are added AFTER the standard price axis series
+#   if (!is.null(optional_price_series)) {
+#     for (series_name in names(optional_price_series)) {
+#       current_series_config <- optional_price_series[[series_name]]
+#       # Ensure the optional series are assigned to the correct price axis NID
+#       current_series_config$yAxis <- price_axis_nid
+#       series_list[[series_name]] <- current_series_config
+#     }
+#   }
+# 
+#   # --- Add Other Standard Series ---
+#   # These use yAxis indices relative to the offset as before
+#   # Ensure column names match your actual chart_data xts object
+#   series_list[["equity_series"]] <- list(
+#     data = chart_data2[,"Equity"],
+#     yAxis = 1L + y_axis_offset,
+#     name = "Equity",
+#     type = "area",
+#     color = "green",
+#     negativeColor = "red",
+#     threshold = 10000,
+#     opacity = 0.75,
+#     tooltip = list(pointFormatter = JS(currency_tooltip_js))
+#   )
+#   series_list[["buy_and_hold_series"]] <- list(
+#     data = chart_data2[,"BuyAndHold"],
+#     yAxis = 1L + y_axis_offset,
+#     name = "Buy & Hold",
+#     color = "blue",
+#     type = "line",
+#     tooltip = list(pointFormatter = JS(currency_tooltip_js))
+#   )
+#   series_list[["drawdown_series"]] <- list(
+#     data = chart_data2[,"Drawdown"],
+#     yAxis = 2L + y_axis_offset,
+#     name = "Drawdown",
+#     color = "darkred",
+#     type = "area",
+#     tooltip = list(pointFormatter = JS(percent_tooltip_js))
+#   )
+# 
+#   series_list
+# }
+# 
+# 
+# # --- Chart Building Logic ---
+# 
+# build_stock_chart <- function(
+#     chart_data, 
+#     chart_title = "Backtest",
+#     chart_theme = hc_theme_hcrt(),
+#     technical_indicator_config = NULL,
+#     optional_price_series_config = NULL) {
+#   # Determine if we should include the axis
+#   include_technical_indicator <- !is.null(technical_indicator_config) 
+# 
+#   hc <- highchart(type = "stock") |>
+#     hc_title(text = chart_title) |>
+#     hc_add_theme(chart_theme) |>
+#     hc_rangeSelector(selected = 1, buttons = list(
+#       list(type = 'year', count = 1, text = '1y'),
+#       list(type = 'year', count = 5, text = '5y'),
+#       list(type = 'year', count = 10, text = '10y'),
+#       list(type = 'year', count = 15, text = '15y'),
+#       list(type = 'all', text = 'All'))) |>
+#     hc_navigator(height = 0)
+# 
+#   # Pass the optional_price_series_config to create_series_config
+#   yaxis_config <- create_yaxis_config(include_technical_indicator)
+#   series_config <- create_series_config(
+#     chart_data2,
+#     technical_indicator_series = technical_indicator_config,
+#     optional_price_series = optional_price_series_config)
+# 
+# 
+#   # Add y-axes first
+#   for (axis_name in names(yaxis_config)) {
+#     if (!inherits(yaxis_config[[axis_name]], "list")) next # Skip attributes etc.
+#     hc <- add_yaxis_hc(hc, yaxis_config[[axis_name]])
+#   }
+# 
+#   # Add series
+#   for (series_name in names(series_config)) {
+#     hc <- add_series_hc(hc, series_config[[series_name]])
+#   }
+# 
+#   hc
+# }
 
 # --- Example Usage ---
-macd_data <- macd(chart_data2$Close, 12, 26, 9)
+# macd_data <- macd(chart_data2$Close, 12, 26, 9)
 # macd_data <- macd(bt_metrics$data_series$close, 12, 26, 9)
-chart_data2$MACD <- macd_data$MACD
-chart_data2$MACD.Signal <- macd_data$Signal
-chart_data2$Zero <- macd_data$Zero
-rm(macd_data)
+# chart_data2$MACD <- macd_data$MACD
+# chart_data2$MACD.Signal <- macd_data$Signal
+# chart_data2$Zero <- macd_data$Zero
+# rm(macd_data)
 
 # Define MACD technical indicator configuration
-macd_indicator_config <- list(
-  macd_series = list(
-    data = chart_data2[,"MACD"],
-    yAxis = 0L,
-    name = "MACD",
-    type = "line",
-    color = "cyan"),
-  signal_series = list(
-    data = chart_data2[,"MACD.Signal"],
-    yAxis = 0L,
-    name = "Signal",
-    color = hex_to_rgba("black", 0.7)),
-  zero_series = list(
-    data = chart_data2[,"Zero"],
-    yAxis = 0L,
-    color = hex_to_rgba("black", 0.7),
-    tooltip = list(enabled = FALSE, pointFormat = NULL)
-  )
-)
+# macd_indicator_config <- list(
+#   macd_series = list(
+#     data = chart_data2[,"MACD"],
+#     yAxis = 0L,
+#     name = "MACD",
+#     type = "line",
+#     color = "cyan"),
+#   signal_series = list(
+#     data = chart_data2[,"MACD.Signal"],
+#     yAxis = 0L,
+#     name = "Signal",
+#     color = hex_to_rgba("black", 0.7)),
+#   zero_series = list(
+#     data = chart_data2[,"Zero"],
+#     yAxis = 0L,
+#     color = hex_to_rgba("black", 0.7),
+#     tooltip = list(enabled = FALSE, pointFormat = NULL)
+#   )
+# )
 
 # Example: Calculate data for two moving averages using quantmod
 # quantmod::SMA expects an xts object
 # chart_data2$MA_24 <- TTR::SMA(chart_data2$Close, n = 24)
-chart_data2$MA_48 <- TTR::SMA(chart_data2$Close, n = 48)
+# chart_data2$MA_48 <- TTR::SMA(chart_data2$Close, n = 48)
 
 # Define the configuration for the optional price series
 # The user does NOT need to specify yAxis here
-my_optional_price_series <- list(
-  ma_50_series = list(
-    data = TTR::SMA(chart_data2$Close, n = 24),
-    name = "24 SMA", 
-    type = "line", 
-    color = "orange", 
-    tooltip = list(pointFormatter = JS(currency_tooltip_js))
-  ),
-  ma_200_series = list(
-    data = chart_data2$MA_48, 
-    name = "48 SMA", 
-    type = "line", 
-    color = "purple", 
-    tooltip = list(pointFormatter = JS(currency_tooltip_js))
-  )
-)
-
-# Chart with MACD technical indicator
-chart_with_ma_macd2 <- build_stock_chart(
-  chart_data2,
-  "SPY - Backtest",
-  hc_theme_hcrt(),
-  technical_indicator_config = macd_indicator_config,
-  optional_price_series_config = my_optional_price_series)
-
-chart_with_ma_macd2
-```
-
-```{r}
-rm(chart_data3)
-chart_data3 <- bt_metrics$data_series |>
-  mutate(
-    macdTbl(close, 12, 26, 9),
-    MA_24 = as.vector(TTR::SMA(close, n = 24)),
-    MA_48 = as.vector(TTR::SMA(close, n = 48)))
-
-view(chart_data3)
+# my_optional_price_series <- list(
+#   ma_50_series = list(
+#     data = TTR::SMA(chart_data2$Close, n = 24),
+#     name = "24 SMA", 
+#     type = "line", 
+#     color = "orange", 
+#     tooltip = list(pointFormatter = JS(currency_tooltip_js))
+#   ),
+#   ma_200_series = list(
+#     data = chart_data2$MA_48, 
+#     name = "48 SMA", 
+#     type = "line", 
+#     color = "purple", 
+#     tooltip = list(pointFormatter = JS(currency_tooltip_js))
+#   )
+# )
+# 
+# # Chart with MACD technical indicator
+# chart_with_ma_macd2 <- build_stock_chart(
+#   chart_data2,
+#   "SPY - Backtest",
+#   hc_theme_hcrt(),
+#   technical_indicator_config = macd_indicator_config,
+#   optional_price_series_config = my_optional_price_series)
+# 
+# chart_with_ma_macd2
 ```
 
 ### Refactor
@@ -2522,7 +2407,7 @@ view(chart_data3)
 #### 1. Define Indicators (from tibble or xts)
 
 ```{r}
-source("src/chart_utilities.R")
+source("src/chart_utilities2.R")
 library(TTR)
 sourceCpp("src/macd.cpp")
 
@@ -2541,16 +2426,6 @@ ma_tbl <- bt_metrics$data_series |>
 #### 2. Merge into `chart_data2`
 
 ```{r}
-# chart_data2 <- bt_metrics$data_series |>
-#   mutate(Trade.Open = ifelse(as.logical(trd_entry), low * .95, NA),
-#          Trade.Close = ifelse(as.logical(trd_exit), high * 1.05, NA)) |>
-#   rename(Date = dt, Open = open, High = high, Low = low,
-#          Close = close, Dividend = dividend,
-#          Equity = eqty, BuyAndHold = bnh_eqty,
-#          Drawdown = drawdn) |>
-#   select(Date, Open, High, Low, Close,
-#          Trade.Open, Trade.Close, Equity, Drawdown, BuyAndHold) |>
-#   as.xts()
 chart_data2 <- merge_indicators_into_xts(chart_data2, list(
   macd = macd_tbl,
   moving_averages = ma_tbl
@@ -2560,6 +2435,8 @@ chart_data2 <- merge_indicators_into_xts(chart_data2, list(
 #### 3. Generate Series Configs
 
 ```{r}
+js_tooltips <- load_js_tooltips()
+
 macd_config <- generate_technical_series_config(
   chart_data2[, c("MACD", "Signal", "Zero")],
   yAxis = 0L,
