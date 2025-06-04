@@ -2407,6 +2407,8 @@ chart_data2 <- bt_metrics$data_series |>
 #### 1. Define Indicators (from tibble or xts)
 
 ```{r}
+# TODO: Make Zero in MACD have not tooltip and add right padding on y axis values
+
 source("src/chart_utilities2.R")
 library(TTR)
 sourceCpp("src/macd.cpp")
@@ -2446,7 +2448,11 @@ macd_config <- generate_technical_series_config(
 ma_config <- generate_technical_series_config(
   chart_data2[, c("MA24", "MA48")],
   yAxis = 1L,  # This is the standard price axis in your chart setup
-  colors = list(MA24 = "orange", MA48 = "purple")
+  colors = list(MA24 = "orange", MA48 = "purple"),
+  tooltip_js = list(
+    MA24 = js_tooltips$currency_tooltip_js,
+    MA48 = js_tooltips$currency_tooltip_js
+  )
 )
 ```
 

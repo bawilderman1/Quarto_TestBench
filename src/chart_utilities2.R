@@ -5,17 +5,22 @@ library(xts)
 library(highcharter)
 library(magrittr)
 
-# --- Load JavaScript formatters ---
-load_js_tooltips <- function(js_dir = "src/js") {
+#' Load JavaScript tooltip formatters from files
+#' 
+#' Reads all tooltip JavaScript files used in chart rendering into memory.
+#' 
+#' @return Named list of JS strings
+load_js_tooltips <- function(base_path = "src/js/") {
+  read_js <- function(filename) {
+    full_path <- file.path(base_path, filename)
+    readChar(full_path, file.info(full_path)$size)
+  }
+  
   list(
-    ohlc_tooltip_js = readChar(file.path(js_dir, "ohlc_tooltip.js"),
-                               file.info(file.path(js_dir, "ohlc_tooltip.js"))$size),
-    currency_tooltip_js = readChar(file.path(js_dir, "currency_tooltip.js"),
-                                   file.info(file.path(js_dir, "currency_tooltip.js"))$size),
-    percent_tooltip_js = readChar(file.path(js_dir, "percent_tooltip.js"),
-                                  file.info(file.path(js_dir, "percent_tooltip.js"))$size),
-    axis_label_percent_js = readChar(file.path(js_dir, "axis_label_percent.js"),
-                                     file.info(file.path(js_dir, "axis_label_percent.js"))$size)
+    ohlc_tooltip_js = read_js("ohlc_tooltip.js"),
+    currency_tooltip_js = read_js("currency_tooltip.js"),
+    percent_tooltip_js = read_js("percent_tooltip.js"),
+    axis_label_percent_js = read_js("axis_label_percent.js")
   )
 }
 
@@ -239,23 +244,64 @@ merge_indicators_into_xts <- function(main_xts, indicators) {
   return(main_xts)
 }
 
-#' Generate series config from indicator xts
-#' @param indicator_xts An xts object with one or more columns
-#' @param yAxis Index for yAxis
-#' @param type Chart type (default: "line")
-#' @param colors Named list of colors (optional)
-#' @return Named list of highcharter series config entries
-generate_technical_series_config <- function(indicator_xts, yAxis = 0L, type = "line", colors = NULL) {
-  col_names <- colnames(indicator_xts)
+#' Generate configuration for technical indicator series
+#'
+#' @param data An xts/data.frame with one or more columns for plotting.
+#' @param yAxis Integer specifying the yAxis index to use.
+#' @param colors Named list of colors per series (optional).
+#' @param tooltip_js Either a single JS string, or a named list of JS strings per series.
+#' @param dash_styles Named list of dash styles per series (optional).
+#' @param line_widths Named list of line widths per series (optional).
+#' @param markers Named list of marker configs per series (optional).
+#'
+#' @return Named list of series configuration entries for use in Highcharter
+generate_technical_series_config <- function(
+    data,
+    yAxis = 0L,
+    colors = NULL,
+    tooltip_js = NULL,
+    dash_styles = NULL,
+    line_widths = NULL,
+    markers = NULL
+) {
+  series_list <- list()
   
-  lapply(seq_along(col_names), function(i) {
-    series_name <- col_names[i]
-    list(
-      data = indicator_xts[, series_name],
+  for (series_name in colnames(data)) {
+    series_config <- list(
+      data = data[, series_name],
       yAxis = yAxis,
       name = series_name,
-      type = type,
-      color = if (!is.null(colors) && !is.null(colors[[series_name]])) colors[[series_name]] else NULL
+      type = "line"
     )
-  }) %>% setNames(col_names)
+    
+    # Optional styling
+    if (!is.null(colors) && !is.null(colors[[series_name]])) {
+      series_config$color <- colors[[series_name]]
+    }
+    
+    if (!is.null(dash_styles) && !is.null(dash_styles[[series_name]])) {
+      series_config$dashStyle <- dash_styles[[series_name]]
+    }
+    
+    if (!is.null(line_widths) && !is.null(line_widths[[series_name]])) {
+      series_config$lineWidth <- line_widths[[series_name]]
+    }
+    
+    if (!is.null(markers) && !is.null(markers[[series_name]])) {
+      series_config$marker <- markers[[series_name]]
+    }
+    
+    # Tooltip support (handle list OR single string)
+    if (!is.null(tooltip_js)) {
+      if (is.list(tooltip_js) && !is.null(tooltip_js[[series_name]])) {
+        series_config$tooltip <- list(pointFormatter = JS(tooltip_js[[series_name]]))
+      } else if (is.character(tooltip_js) && length(tooltip_js) == 1) {
+        series_config$tooltip <- list(pointFormatter = JS(tooltip_js))
+      }
+    }
+    
+    series_list[[series_name]] <- series_config
+  }
+  
+  return(series_list)
 }
