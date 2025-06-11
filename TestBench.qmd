@@ -1722,150 +1722,15 @@ highchart(type = "stock") |>
 
 ## Backtest Charts
 
-```{r}
-library(dplyr)
-library(highcharter)
+### Backtest - Stock Chart
 
-# Prepare and rename
-chart_data_cgpt <- bt_metrics$data_series |>
-  rename(Date = dt,
-         SPY.Open = open,
-         SPY.High = high,
-         SPY.Low = low,
-         SPY.Close = close) |>
-  select(Date, SPY.Open, SPY.High, SPY.Low, SPY.Close) |>
-  arrange(Date)
-
-chart_data_cgpt <- chart_data_cgpt |> mutate(Volume = runif(n(), 1e6, 5e6))
-
-# Convert Date to milliseconds since epoch
-chart_data_cgpt <- chart_data_cgpt |>
-  mutate(Date = datetime_to_timestamp(as.POSIXct(Date, tz = "UTC")))
-
-highchart(type = "stock") |>
-  hc_chart(zoomType = "xy") |>
-  hc_title(text = "SPY - Backtest (Candlestick)") |>
-  hc_add_theme(hc_theme_hcrt()) |>
-  hc_rangeSelector(selected = 1, buttons = list(
-    list(type = 'year', count = 1, text = '1y'),
-    list(type = 'year', count = 5, text = '5y'),
-    list(type = 'year', count = 10, text = '10y'),
-    list(type = 'year', count = 15, text = '15y'),
-    list(type = 'all', text = 'All'))) |>
-  hc_yAxis(
-    labels = list(x = -10),  # Shift labels left
-    offset = 30,             # Offset whole axis from edge
-    lineWidth = 1
-  ) |>
-  hc_add_series(data = chart_data_cgpt,
-                mapping = hcaes(x = Date,
-                                open = SPY.Open,
-                                high = SPY.High,
-                                low = SPY.Low,
-                                close = SPY.Close),
-                type = "candlestick",
-                name = "SPY") |>
-  hc_tooltip(valueDecimals = 2,
-             split = TRUE,
-             shared = TRUE) |>
-  hc_exporting(
-    enabled = TRUE,
-    buttons = list(
-      contextButton = list(
-        menuItems = c("viewFullscreen", "printChart", "separator", "downloadPNG",
-                      "downloadJPEG", "downloadPDF", "downloadSVG", "separator",
-                      "resetZoom", "resetZoomButton")
-      )
-    )
-  )
-
-# highchart(type = "stock") |>
-#   hc_chart(zoomType = "xy") |>
-#   hc_title(text = "SPY - Backtest (Candlestick with Volume Above)") |>
-#   hc_add_theme(hc_theme_hcrt()) |>
-#   hc_rangeSelector(selected = 1, buttons = list(
-#     list(type = 'year', count = 1, text = '1y'),
-#     list(type = 'year', count = 5, text = '5y'),
-#     list(type = 'year', count = 10, text = '10y'),
-#     list(type = 'year', count = 15, text = '15y'),
-#     list(type = 'all', text = 'All'))) |>
-# 
-#   # Y-Axis configuration
-#   hc_yAxis_multiples(
-#     list(  # Volume axis (top)
-#       height = "15%",   # Top 30%
-#       lineWidth = 1,
-#       labels = list(align = "right", x = -5),
-#       title = list(text = "Volume"),
-#       top = "0%",       # Position at top
-#       offset = 0
-#     ),
-#     list(  # Price axis (bottom)
-#       top = "15%",      # Start below the volume axis
-#       height = "85%",   # Use remaining space
-#       offset = 0,
-#       lineWidth = 1,
-#       labels = list(align = "right", x = -5),
-#       title = list(text = "Price")
-#     )
-#   ) |>
-# 
-#   # Range selector
-#   hc_rangeSelector(selected = 1) |>
-# 
-#   # Volume series (on top, yAxis = 0)
-#   hc_add_series(
-#     data = chart_data_cgpt,
-#     mapping = hcaes(x = Date, y = Volume),
-#     type = "column",
-#     yAxis = 0,
-#     name = "Volume",
-#     color = "#7cb5ec"
-#   ) |>
-# 
-#   # Candlestick series (on bottom, yAxis = 1)
-#   hc_add_series(
-#     data = chart_data_cgpt,
-#     mapping = hcaes(x = Date,
-#                     open = SPY.Open,
-#                     high = SPY.High,
-#                     low = SPY.Low,
-#                     close = SPY.Close),
-#     type = "candlestick",
-#     yAxis = 1,
-#     name = "SPY"
-#   ) |>
-# 
-#   # Tooltip
-#   hc_tooltip(valueDecimals = 2, split = TRUE, shared = TRUE)
-```
-
-### TODO
+#### 1. Transform Chart Data
 
 ```{r}
-chart_data2 <- bt_metrics$data_series |>
-  mutate(Trade.Open = ifelse(as.logical(trd_entry), low * .95, NA),
-         Trade.Close = ifelse(as.logical(trd_exit), high * 1.05, NA)) |>
-  rename(Date = dt, Open = open, High = high, Low = low,
-         Close = close, Dividend = dividend,
-         Equity = eqty, BuyAndHold = bnh_eqty,
-         Drawdown = drawdn) |>
-  select(Date, Open, High, Low, Close,
-         Trade.Open, Trade.Close, Equity, Drawdown, BuyAndHold) |>
-  as.xts()
-# view(chart_data2)
-```
-
-### Refactor
-
-#### 1. Define Indicators (from tibble or xts)
-
-```{r}
-# TODO: add right padding on y axis values
-
-source("src/chart_utilities2.R")
 library(TTR)
 sourceCpp("src/macd.cpp")
+source("src/stock_chart_utilities.R")
+js_tooltips <- load_js_tooltips()
 
 macd_tbl <- bt_metrics$data_series |>
   mutate(Date = dt,
@@ -1877,22 +1742,18 @@ ma_tbl <- bt_metrics$data_series |>
          MA24 = TTR::SMA(close, n = 24),
          MA48 = TTR::SMA(close, n = 48)) |>
   select(Date, MA24, MA48)
-```
 
-#### 2. Merge into `chart_data2`
+bt_xts <-transform_bt_series_to_xts(bt_metrics$data_series)
 
-```{r}
-chart_data2 <- merge_indicators_into_xts(chart_data2, list(
+bt_xts <- merge_indicators_into_xts(bt_xts, list(
   macd = macd_tbl,
   moving_averages = ma_tbl
 ))
 ```
 
-#### 3. Generate Series Configs
+#### 2. Generate Series Configs
 
 ```{r}
-js_tooltips <- load_js_tooltips()
-
 macd_config <- generate_technical_series_config(
   chart_data2[, c("MACD", "Signal", "Zero")],
   yAxis = 0L,
@@ -1913,12 +1774,11 @@ ma_config <- generate_technical_series_config(
 )
 ```
 
-#### 4. Build Chart
+#### 3. Build Chart
 
 ```{r}
-# source("src/chart_utilities2.R")
 build_stock_chart(
-  chart_data = add_blank_bars_xts(chart_data2, n = 3),
+  chart_data = add_blank_bars_xts(bt_xts, n = 3),
   chart_title = "Backtest with Indicators",
   technical_indicator_config = macd_config,
   optional_price_series_config = ma_config
@@ -1947,7 +1807,10 @@ hchart(bt_metrics$data_trd |>
            plotLines = list(
              list(dashStyle = "Dash", value = 0, color = "black", zIndex = 3)
            )) |>
-  hc_yAxis(title = list(text = "Max Trade Drawdown")) |>
+  hc_yAxis(title = list(text = "Max Trade Drawdown"),
+           plotLines = list(
+             list(dashStyle = "Dash", value = 0, color = "black", zIndex = 3)
+           )) |>
   hc_tooltip(useHTML = TRUE, pointFormat = tltip, headerFormat = paste0("<span style=\"color:{series.color}\">●</span> <b style=\"color:{series.color};font-size:1rem;\">{series.name}</b>"))
 ```
 
@@ -1965,7 +1828,10 @@ hchart(bt_metrics$data_trd,
            plotLines = list(
              list(dashStyle = "Dash", value = 0, color = "black", zIndex = 3)
            )) |>
-  hc_yAxis(title = list(text = "Max Unrealized Value")) |>
+  hc_yAxis(title = list(text = "Max Unrealized Value"),
+           plotLines = list(
+             list(dashStyle = "Dash", value = 0, color = "black", zIndex = 3)
+           )) |>
   hc_tooltip(
     useHTML = TRUE,  # Important for complex tooltips
     formatter = JS(

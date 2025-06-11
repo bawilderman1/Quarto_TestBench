@@ -389,6 +389,70 @@ generate_technical_series_config <- function(
   return(series_list)
 }
 
+#' Transform Backtest Metrics Tibble to XTS Object
+#'
+#' Converts a tibble of backtest data into an `xts` object for charting, with standardized OHLC and
+#' performance columns, and optional trade markers and dividend series.
+#'
+#' @param data A `tibble` or `data.frame` containing backtest metrics, including:
+#'   \code{dt}, \code{open}, \code{high}, \code{low}, \code{close}, \code{eqty},
+#'   \code{bnh_eqty}, \code{drawdn}, \code{trd_entry}, and \code{trd_exit}.
+#'   Optional column: \code{dividend}.
+#' @param trade_offset A numeric value representing the percentage offset for trade markers,
+#'   e.g., 0.05 = ±5% of low/high for open/close. Default is 0.05.
+#'
+#' @return An `xts` object with columns:
+#'   \code{Open}, \code{High}, \code{Low}, \code{Close}, \code{Trade.Open}, \code{Trade.Close},
+#'   \code{Equity}, \code{Drawdown}, \code{BuyAndHold}, and optionally \code{Dividend}.
+#'
+#' @examples
+#' xts_data <- transform_bt_series_to_xts(bt_metrics$data_series)
+#' xts_data <- transform_bt_series_to_xts(bt_metrics$data_series, trade_offset = 0.02)
+#'
+#' @export
+transform_bt_series_to_xts <- function(data, trade_offset = 0.05) {
+  required_cols <- c("dt", "open", "high", "low", "close",
+                     "eqty", "bnh_eqty", "drawdn", "trd_entry", "trd_exit")
+  missing_cols <- setdiff(required_cols, names(data))
+  if (length(missing_cols) > 0) {
+    stop("Missing required columns: ", paste(missing_cols, collapse = ", "))
+  }
+  
+  has_dividend <- "dividend" %in% names(data)
+  
+  open_multiplier  <- 1 - trade_offset
+  close_multiplier <- 1 + trade_offset
+  
+  data <- data |>
+    dplyr::mutate(
+      Trade.Open  = ifelse(as.logical(trd_entry), low  * open_multiplier, NA_real_),
+      Trade.Close = ifelse(as.logical(trd_exit),  high * close_multiplier, NA_real_)
+    ) |>
+    dplyr::rename(
+      Date       = dt,
+      Open       = open,
+      High       = high,
+      Low        = low,
+      Close      = close,
+      Equity     = eqty,
+      BuyAndHold = bnh_eqty,
+      Drawdown   = drawdn
+    )
+  
+  # Rename dividend if it exists
+  if (has_dividend) {
+    data <- data |>
+      dplyr::rename(Dividend = dividend)
+  }
+  
+  # Select relevant columns
+  cols <- c("Date", "Open", "High", "Low", "Close",
+            "Trade.Open", "Trade.Close", "Equity", "Drawdown", "BuyAndHold")
+  if (has_dividend) cols <- c(cols, "Dividend")
+  
+  xts::xts(data[cols][-1], order.by = data$Date)
+}
+
 add_blank_bars_xts <- function(xts_data, n = 3) {
   if (!xts::is.xts(xts_data)) {
     stop("Input must be an xts object")
