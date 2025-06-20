@@ -1788,79 +1788,33 @@ build_stock_chart(
 ### Backtest - Scatterplots
 
 ```{r}
-#view(bt_metrics$data_trd)
+source("src/scatter_chart_utilities.R")
 
-x <- c("Trade #", "Profit/Loss", "Max Drawdown")  
-y <- c("{point.trd_num}", "{point.x}%", "{point.y}%")   
-tltip <- tooltip_table(x, y) 
-
-hchart(bt_metrics$data_trd |> 
-         mutate(trd_pnl_pct = round(trd_pnl_pct * 100, 2),
-                max_trd_drawdn = round(max_trd_drawdn * 100, 2)), 
-       "scatter", 
-       hcaes(x = trd_pnl_pct, 
-             y = max_trd_drawdn, 
-             group = trd_rslt)) |>
-  hc_add_theme(hc_theme_hcrt()) |>
-  hc_title(text = "Backtest - PnL vs. Max Drawdown") |>
-  hc_xAxis(title = list(text = "Trade Profit and Loss"),
-           plotLines = list(
-             list(dashStyle = "Dash", value = 0, color = "black", zIndex = 3)
-           )) |>
-  hc_yAxis(title = list(text = "Max Trade Drawdown"),
-           plotLines = list(
-             list(dashStyle = "Dash", value = 0, color = "black", zIndex = 3)
-           )) |>
-  hc_tooltip(useHTML = TRUE, pointFormat = tltip, headerFormat = paste0("<span style=\"color:{series.color}\">●</span> <b style=\"color:{series.color};font-size:1rem;\">{series.name}</b>"))
+build_scatter_chart(
+  data = bt_metrics$data_trd,
+  x_col = "trd_pnl_pct",
+  y_col = "max_trd_drawdn",
+  group_col = "trd_rslt",
+  chart_title = "Backtest - PnL vs. Max Drawdown",
+  y_axis_title = "Max Trade Drawdown",
+  y_axis_tooltip = "Max Drawdown",
+  chart_theme = hc_theme_hcrt()
+)
 ```
 
 ```{r}
-#view(bt_metrics$data_trd)
+source("src/scatter_chart_utilities.R")
 
-hchart(bt_metrics$data_trd, 
-       "scatter", 
-       hcaes(x = trd_pnl_pct, 
-             y = max_ur_drawup, 
-             group = trd_rslt)) |>
-  hc_add_theme(hc_theme_hcrt()) |>
-  hc_title(text = "Backtest - PnL vs. Max Unrealized Gain") |>
-  hc_xAxis(title = list(text = "Trade Profit and Loss"),
-           plotLines = list(
-             list(dashStyle = "Dash", value = 0, color = "black", zIndex = 3)
-           )) |>
-  hc_yAxis(title = list(text = "Max Unrealized Value"),
-           plotLines = list(
-             list(dashStyle = "Dash", value = 0, color = "black", zIndex = 3)
-           )) |>
-  hc_tooltip(
-    useHTML = TRUE,  # Important for complex tooltips
-    formatter = JS(
-      "function() {
-        let point = this.point;
-        let tableRows = `
-          <tr><th>Trade #:</th><td>${point.trd_num}</td></tr>
-          <tr><th>Profit/Loss:</th><td>${(point.x).toLocaleString(undefined, {style: 'percent', maximumFractionDigits: 2})}</td></tr>
-          <tr><th>Max Gain:</th><td>${(point.y).toLocaleString(undefined, {style: 'percent', maximumFractionDigits: 2})}</td></tr>
-        `; // Construct table rows
-  
-        return `
-          <div style='background-color: rgba(255, 255, 255, 0.8); padding: 2px; border-radius: 5px;'>
-            <table>
-              <thead>
-                <tr><th colspan='2' style='text-align: center;'>
-                  <span style='color:${this.series.color}'>●</span>
-                  <span style='color:${this.series.color};font-size:1.05rem;'>${point.trd_rslt}</span>
-                </th></tr>
-              </thead>
-              <tbody>
-                ${tableRows}
-              </tbody>
-            </table>
-          </div>
-        `; // Return the complete HTML tooltip content
-      }"
-    )
-  )
+build_scatter_chart(
+  data = bt_metrics$data_trd,
+  x_col = "trd_pnl_pct",
+  y_col = "max_ur_drawup",
+  group_col = "trd_rslt",
+  chart_title = "Backtest - PnL vs. Max Unrealized Gain",
+  y_axis_title = "Max Unrealized Gain",
+  y_axis_tooltip = "Max Gain",
+  chart_theme = hc_theme_hcrt()
+)
 ```
 
 ### C++ Indicators
