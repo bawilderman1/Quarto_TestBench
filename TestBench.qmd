@@ -47,6 +47,14 @@ con <- dbConnect(duckdb::duckdb(), dbdir = "C:/Users/bawil/Documents/StockData/D
 ```
 
 ```{r}
+spy_daily <- dbGetQuery(
+  con,
+  "SELECT d.*, 
+   FROM spy_1d_adj d
+   ORDER BY d.dt;")
+```
+
+```{r}
 result <- dbGetQuery(
   con,
   "WITH spy_dividend_cte AS (
@@ -78,7 +86,8 @@ result <- dbGetQuery(
 ```
 
 ```{r}
-glimpse(result)
+# glimpse(result)
+glimpse(spy_daily)
 ```
 
 ```{r}
@@ -1821,6 +1830,7 @@ build_scatter_chart(
 
 ```{r}
 sourceCpp("src/macd.cpp")
+sourceCpp("src/ultimate_smoother.cpp")
 
 # Example usage with List:
 # data <- rnorm(100) # Example data
@@ -1846,8 +1856,10 @@ stock_data <- tibble(
 )
 
 # Calculate MACD using dplyr's mutate
-stock_data <- stock_data %>%
-  mutate(macdTbl(close, 12, 26, 9))
+stock_data <- spy_daily %>%  #stock_data %>%
+  mutate(date = dt,
+         macdTbl(close, 12, 26, 9),
+         ultimateSmootherTbl((open + close) / 2, 10, 1))
 
 # Print the first few rows to see the results
 print(head(stock_data))
@@ -1856,16 +1868,27 @@ print(head(stock_data))
 # For example, plot the MACD and Signal lines:
 # library(ggplot2)
 
-ggplot(stock_data, aes(x = date)) +
-  geom_line(aes(y = MACD, color = "MACD")) +
-  geom_line(aes(y = Signal, color = "Signal")) +
-  labs(title = "MACD and Signal Lines", x = "Date", y = "Value") +
-  scale_color_manual(values = c("MACD" = "blue", "Signal" = "red")) +
-  theme_minimal()
+ggplot(stock_data %>% slice((n()-150) : (n()-100)) 
+       , aes(x = date, y = close)) +
+  geom_candle(
+    x = date, o = open, h = high, l = low, c = close,
+    color = "black"
+  ) +
+  geom_line(aes(y = UltimateSmoother, color = "blue")) +
+  theme_bw() +
+  scale_color_manual(values = c("black", "orange")) +
+  labs(title = "Ultimate Smoother")
 
-# Plot the histogram
-ggplot(stock_data, aes(x = date, y = Histogram)) +
-  geom_bar(stat = "identity", fill = ifelse(stock_data$Histogram >= 0, "green", "red")) +
-  labs(title = "MACD Histogram", x = "Date", y = "Value") +
-  theme_minimal()
+# ggplot(stock_data, aes(x = date)) +
+#   geom_line(aes(y = MACD, color = "MACD")) +
+#   geom_line(aes(y = Signal, color = "Signal")) +
+#   labs(title = "MACD and Signal Lines", x = "Date", y = "Value") +
+#   scale_color_manual(values = c("MACD" = "blue", "Signal" = "red")) +
+#   theme_minimal()
+# 
+# # Plot the histogram
+# ggplot(stock_data, aes(x = date, y = Histogram)) +
+#   geom_bar(stat = "identity", fill = ifelse(stock_data$Histogram >= 0, "green", "red")) +
+#   labs(title = "MACD Histogram", x = "Date", y = "Value") +
+#   theme_minimal()
 ```
