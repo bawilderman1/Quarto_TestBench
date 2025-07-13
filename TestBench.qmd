@@ -738,11 +738,15 @@ bt_sim_func <- \(tbl,
                  incl_dividends = FALSE, 
                  incl_buynhold = FALSE)
 {
-  if (!"rn" %in% colnames(bt_strtgy)) {
+  if (!"rn" %in% colnames(tbl)) {
    tbl = tbl |> mutate(rn = row_number()) 
   }
   
-  tbl_rlen = length(tbl$dt)
+  tbl_rlen = nrow(tbl)
+  # tbl_rlen = length(tbl$dt)
+  
+  in_trade <- FALSE
+  
   trd_entry_vec = as.numeric(tbl$trd_entry)
   trd_exit_vec = as.numeric(tbl$trd_exit)
   pos_size_vec = vector("numeric" , tbl_rlen)
@@ -763,7 +767,7 @@ bt_sim_func <- \(tbl,
     bnh_eqty_vec = vector("numeric" , tbl_rlen)
   }
   
-  for (i in seq_along(tbl$dt)) {
+  for (i in seq_len(tbl_rlen)) {
     f_row = i == 1
     entry = as.logical(trd_entry_vec[i])
     exit = as.logical(trd_exit_vec[i])
@@ -771,15 +775,19 @@ bt_sim_func <- \(tbl,
     if (f_row & entry) {
       pos_size_vec[i] = round(init_eqty / open_vec[i], 2)
       cash_vec[i] = 0
+      in_trade = TRUE
     } else if (f_row & !entry) {
       pos_size_vec[i] = 0
       cash_vec[i] = init_eqty
-    } else if (entry) {
+      in_trade = FALSE
+    } else if (entry & !in_trade) {
       pos_size_vec[i] = round(cash_vec[i - 1] / open_vec[i], 2)
       cash_vec[i] = 0
-    } else if (exit) {
+      in_trade = TRUE
+    } else if (exit & in_trade) {
       pos_size_vec[i] = 0
       cash_vec[i] = round(pos_size_vec[i - 1] * open_vec[i], 2)
+      in_trade = FALSE
     } else {
       pos_size_vec[i] = pos_size_vec[i - 1]
       cash_vec[i] = cash_vec[i - 1]
@@ -1395,23 +1403,38 @@ bt_processor <- \(data_tbl,
 ```
 
 ```{r}
+sourceCpp("src/ultimate_smoother.cpp")
+
 init_eqty <- 10000
 incl_dividends <- TRUE
 incl_buynhold <- TRUE
 
+# strtgy_entry <- \(.) {
+#  ifelse((.$mth_nbr == 11 | (.$mth_nbr == 1 & .$rn == 1)), 1, 0)
+# }
+# strtgy_exit <- \(.) {
+#  ifelse(.$mth_nbr == 8, 1, 0)
+# }
+
 strtgy_entry <- \(.) {
- ifelse((.$mth_nbr == 11 | (.$mth_nbr == 1 & .$rn == 1)), 1, 0)
+ ifelse(.$rn > 1 & 
+        (.$oc2 > .$UltimateSmoother & lag(.$oc2) <= lag(.$UltimateSmoother)), 
+        1, 0)
 }
 strtgy_exit <- \(.) {
- ifelse(.$mth_nbr == 8, 1, 0)
+ ifelse(.$rn > 1 & 
+        (.$oc2 < .$UltimateSmoother & lag(.$oc2) >= lag(.$UltimateSmoother)), 
+        1, 0)
 }
 
 bt_strtgy <- result |>
+  mutate(oc2 = (open + close) / 2,
+         ultimateSmootherTbl(oc2, 10, 1)) |>
   filter(year(dt) %in% c(2000:2020)) |>
   mutate(rn = row_number(),
          mth_nbr = month(dt),
          dividend = if_else(is.na(dividend), 0, dividend)) |>
-  select(dt, open, high, low, close, rn, mth_nbr, dividend)
+  select(dt, open, high, low, close, rn, mth_nbr, dividend, oc2, UltimateSmoother)
 
 bt_metrics <- bt_processor(bt_strtgy,
                             strtgy_entry,
