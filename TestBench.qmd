@@ -1759,26 +1759,36 @@ highchart(type = "stock") |>
 #### 1. Transform Chart Data
 
 ```{r}
-library(TTR)
-sourceCpp("src/macd.cpp")
+# library(TTR)
+# sourceCpp("src/macd.cpp")
+sourceCpp("src/ultimate_smoother.cpp")
 source("src/stock_chart_utilities.R")
 js_tooltips <- load_js_tooltips()
 
-macd_tbl <- bt_metrics$data_series |>
-  mutate(Date = dt,
-         macdTbl(close, 12, 26, 9)) |>
-  select(Date, MACD, Signal, Zero)
+# macd_tbl <- bt_metrics$data_series |>
+#   mutate(Date = dt,
+#          macdTbl(close, 12, 26, 9)) |>
+#   select(Date, MACD, Signal, Zero)
+
+# ma_tbl <- bt_metrics$data_series |>
+#   mutate(Date = dt,
+#          MA24 = TTR::SMA(close, n = 24),
+#          MA48 = TTR::SMA(close, n = 48)) |>
+#   select(Date, MA24, MA48)
 
 ma_tbl <- bt_metrics$data_series |>
   mutate(Date = dt,
-         MA24 = TTR::SMA(close, n = 24),
-         MA48 = TTR::SMA(close, n = 48)) |>
-  select(Date, MA24, MA48)
+         UltimateSmoother = ultimateSmootherTbl((open + close) / 2, 10, 1)) |>
+  select(Date, UltimateSmoother)
 
 bt_xts <-transform_bt_series_to_xts(bt_metrics$data_series)
 
+# bt_xts <- merge_indicators_into_xts(bt_xts, list(
+#   macd = macd_tbl,
+#   moving_averages = ma_tbl
+# ))
+
 bt_xts <- merge_indicators_into_xts(bt_xts, list(
-  macd = macd_tbl,
   moving_averages = ma_tbl
 ))
 ```
@@ -1786,22 +1796,31 @@ bt_xts <- merge_indicators_into_xts(bt_xts, list(
 #### 2. Generate Series Configs
 
 ```{r}
-macd_config <- generate_technical_series_config(
-  chart_data2[, c("MACD", "Signal", "Zero")],
-  yAxis = 0L,
-  colors = list(MACD = "cyan", Signal = "black", Zero = "gray"),
-  tooltip_js = list(
-    Zero = list(enabled = FALSE, pointFormat = NULL)
-  )
-)
+# macd_config <- generate_technical_series_config(
+#   chart_data2[, c("MACD", "Signal", "Zero")],
+#   yAxis = 0L,
+#   colors = list(MACD = "cyan", Signal = "black", Zero = "gray"),
+#   tooltip_js = list(
+#     Zero = list(enabled = FALSE, pointFormat = NULL)
+#   )
+# )
+
+# ma_config <- generate_technical_series_config(
+#   chart_data2[, c("MA24", "MA48")],
+#   yAxis = 1L,
+#   colors = list(MA24 = "orange", MA48 = "purple"),
+#   tooltip_js = list(
+#     MA24 = js_tooltips$currency_tooltip_js,
+#     MA48 = js_tooltips$currency_tooltip_js
+#   )
+# )
 
 ma_config <- generate_technical_series_config(
-  chart_data2[, c("MA24", "MA48")],
+  bt_xts[, c("UltimateSmoother")],
   yAxis = 1L,
-  colors = list(MA24 = "orange", MA48 = "purple"),
+  colors = list(UltimateSmoother = "orange"),
   tooltip_js = list(
-    MA24 = js_tooltips$currency_tooltip_js,
-    MA48 = js_tooltips$currency_tooltip_js
+    UltimateSmoother = js_tooltips$currency_tooltip_js
   )
 )
 ```
@@ -1809,10 +1828,16 @@ ma_config <- generate_technical_series_config(
 #### 3. Build Chart
 
 ```{r}
+# build_stock_chart(
+#   chart_data = add_blank_bars_xts(bt_xts, n = 3),
+#   chart_title = "Backtest with Indicators",
+#   technical_indicator_config = macd_config,
+#   optional_price_series_config = ma_config
+# )
+
 build_stock_chart(
   chart_data = add_blank_bars_xts(bt_xts, n = 3),
-  chart_title = "Backtest with Indicators",
-  technical_indicator_config = macd_config,
+  chart_title = "UltimateSmoother(10) Backtest",,
   optional_price_series_config = ma_config
 )
 ```
