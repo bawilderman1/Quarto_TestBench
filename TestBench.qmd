@@ -724,6 +724,13 @@ anlzd_sharp_func <- function(pnl_vctr, anlzd_scale = 12)
 ```
 
 ```{r}
+# --- Trade Timing Enum-like List ---
+TradeTiming <- list(
+  OPEN = "open",
+  CLOSE = "close",
+  NEXT_OPEN = "next_open"
+)
+
 add_trades_func <- \(tbl, entryFunc, exitFunc, ...)
 {
   tbl |>
@@ -733,146 +740,160 @@ add_trades_func <- \(tbl, entryFunc, exitFunc, ...)
     )
 }
 
-bt_sim_func <- \(tbl, 
-                 init_eqty = 10000, 
-                 incl_dividends = FALSE, 
-                 incl_buynhold = FALSE)
-{
-  if (!"rn" %in% colnames(tbl)) {
-   tbl = tbl |> mutate(rn = row_number()) 
-  }
-  
-  tbl_rlen = nrow(tbl)
-  # tbl_rlen = length(tbl$dt)
-  
+# --- Core Simulator ---
+bt_sim_func <- function(tbl,
+                        strat_cfg = list(
+                          entry_timing = "open",
+                          exit_timing = "open",
+                          init_eqty = 10000,
+                          incl_buynhold = TRUE,
+                          incl_dividends = TRUE
+                        )) {
+
+  tbl <- tbl |> mutate(rn = if (!"rn" %in% names(tbl)) row_number() else rn)
+  tbl_rlen <- nrow(tbl)
+
+  # Extract strategy config values
+  init_eqty <- strat_cfg$init_eqty
+  incl_dividends <- strat_cfg$incl_dividends
+  incl_buynhold <- strat_cfg$incl_buynhold
+  entry_timing <- strat_cfg$entry_timing
+  exit_timing <- strat_cfg$exit_timing
+
+  # Initialize vectors
+  pos_size_vec <- numeric(tbl_rlen)
+  pos_val_vec <- numeric(tbl_rlen)
+  cash_vec <- numeric(tbl_rlen)
+  eqty_vec <- numeric(tbl_rlen)
+  eqty_low_vec <- numeric(tbl_rlen)
+  eqty_high_vec <- numeric(tbl_rlen)
+  bnh_ps_vec <- numeric(tbl_rlen)
+  bnh_eqty_vec <- numeric(tbl_rlen)
+
+  open_vec <- tbl$open
+  close_vec <- tbl$close
+  low_vec <- tbl$low
+  high_vec <- tbl$high
+  div_vec <- if (incl_dividends) tbl$dividend else rep(0, tbl_rlen)
+  trd_entry_vec <- as.logical(tbl$trd_entry)
+  trd_exit_vec <- as.logical(tbl$trd_exit)
+
   in_trade <- FALSE
-  
-  trd_entry_vec = as.numeric(tbl$trd_entry)
-  trd_exit_vec = as.numeric(tbl$trd_exit)
-  pos_size_vec = vector("numeric" , tbl_rlen)
-  pos_val_vec = vector("numeric" , tbl_rlen)
-  cash_vec = vector("numeric" , tbl_rlen)
-  eqty_vec = vector("numeric" , tbl_rlen)
-  eqty_low_vec = vector("numeric" , tbl_rlen)
-  eqty_high_vec = vector("numeric" , tbl_rlen)
-  open_vec = as.numeric(tbl$open)
-  close_vec = as.numeric(tbl$close)
-  low_vec = as.numeric(tbl$low)
-  high_vec = as.numeric(tbl$high)
-  if (incl_dividends) {
-   div_vec = as.numeric(tbl$dividend) 
-  }
-  if (incl_buynhold) {
-    bnh_ps_vec = vector("numeric" , tbl_rlen)
-    bnh_eqty_vec = vector("numeric" , tbl_rlen)
-  }
-  
+  prev_pos_size <- 0
+
   for (i in seq_len(tbl_rlen)) {
-    f_row = i == 1
-    entry = as.logical(trd_entry_vec[i])
-    exit = as.logical(trd_exit_vec[i])
-    
-    if (f_row & entry) {
-      pos_size_vec[i] = round(init_eqty / open_vec[i], 2)
-      cash_vec[i] = 0
-      in_trade = TRUE
-    } else if (f_row & !entry) {
-      pos_size_vec[i] = 0
-      cash_vec[i] = init_eqty
-      in_trade = FALSE
-    } else if (entry & !in_trade) {
-      pos_size_vec[i] = round(cash_vec[i - 1] / open_vec[i], 2)
-      cash_vec[i] = 0
-      in_trade = TRUE
-    } else if (exit & in_trade) {
-      pos_size_vec[i] = 0
-      cash_vec[i] = round(pos_size_vec[i - 1] * open_vec[i], 2)
-      in_trade = FALSE
-    } else {
-      pos_size_vec[i] = pos_size_vec[i - 1]
-      cash_vec[i] = cash_vec[i - 1]
+    f_row <- i == 1
+
+    entry <- trd_entry_vec[i]
+    exit <- trd_exit_vec[i]
+
+    # --- ENTRY ---
+    if (!in_trade && entry) {
+      exec_price <- switch(entry_timing,
+        open = open_vec[i],
+        close = close_vec[i],
+        next_open = if (i < tbl_rlen) open_vec[i + 1] else NA_real_
+      )
+
+      if (!is.na(exec_price)) {
+        pos_size_vec[i] <- round(ifelse(f_row, init_eqty, cash_vec[i - 1]) / exec_price, 2)
+        cash_vec[i] <- 0
+        in_trade <- TRUE
+      }
     }
-    
-    # Handle Buy & Hold data
+
+    # --- EXIT ---
+    else if (in_trade && exit) {
+      exec_price <- switch(exit_timing,
+        open = open_vec[i],
+        close = close_vec[i],
+        next_open = if (i < tbl_rlen) open_vec[i + 1] else NA_real_
+      )
+
+      if (!is.na(exec_price)) {
+        cash_vec[i] <- round(prev_pos_size * exec_price, 2)
+        pos_size_vec[i] <- 0
+        in_trade <- FALSE
+      }
+    }
+
+    # --- HOLDING ---
+    else {
+      pos_size_vec[i] <- if (f_row) 0 else pos_size_vec[i - 1]
+      cash_vec[i] <- if (f_row) init_eqty else cash_vec[i - 1]
+    }
+
+    prev_pos_size <- pos_size_vec[i]
+
+    # --- Dividends into position ---
+    if (incl_dividends && div_vec[i] > 0) {
+      if (pos_size_vec[i] > 0) {
+        pos_size_vec[i] <- pos_size_vec[i] + round((div_vec[i] * pos_size_vec[i]) / open_vec[i], 2)
+      } else {
+        cash_vec[i] <- cash_vec[i] + round(prev_pos_size * div_vec[i], 2)
+      }
+    }
+
+    # --- Buy & Hold Logic ---
     if (incl_buynhold) {
       if (f_row) {
-        bnh_ps_vec[i] = round(init_eqty / open_vec[i], 2)
+        bnh_ps_vec[i] <- round(init_eqty / open_vec[i], 2)
       } else {
-        bnh_ps_vec[i] = bnh_ps_vec[i - 1]
+        bnh_ps_vec[i] <- bnh_ps_vec[i - 1]
       }
-      
-      if (incl_dividends & div_vec[i] > 0) {
-        bnh_ps_vec[i] = bnh_ps_vec[i] +
-          round((div_vec[i] * bnh_ps_vec[i]) / open_vec[i], 2)
+      if (div_vec[i] > 0) {
+        bnh_ps_vec[i] <- bnh_ps_vec[i] + round((div_vec[i] * bnh_ps_vec[i]) / open_vec[i], 2)
       }
     }
-    
-    # Handle Dividends for long positions at time of ex-div date
-    if (incl_dividends & div_vec[i] > 0 & (pos_size_vec[i] > 0 | exit)) {
-      if (pos_size_vec[i] > 0) {
-        pos_size_vec[i] = pos_size_vec[i] + 
-          round((div_vec[i] * pos_size_vec[i]) / open_vec[i], 2)
-      } else {
-        cash_vec[i] = cash_vec[i] + round(pos_size_vec[i] * div_vec[i], 2)
-      }
-    }
-    
-    pos_val_vec[i] = round(pos_size_vec[i] * close_vec[i], 2)
-    eqty_vec[i] = cash_vec[i] + pos_val_vec[i]
-    eqty_low_vec[i] = round(cash_vec[i] + (pos_size_vec[i] * low_vec[i]), 2)
-    eqty_high_vec[i] = round(cash_vec[i] + (pos_size_vec[i] * high_vec[i]), 2)
-    if (incl_buynhold) {
-      bnh_eqty_vec[i] = round(bnh_ps_vec[i] * close_vec[i], 2)
-    }
+
+    pos_val_vec[i] <- round(pos_size_vec[i] * close_vec[i], 2)
+    eqty_vec[i] <- cash_vec[i] + pos_val_vec[i]
+    eqty_low_vec[i] <- round(cash_vec[i] + pos_size_vec[i] * low_vec[i], 2)
+    eqty_high_vec[i] <- round(cash_vec[i] + pos_size_vec[i] * high_vec[i], 2)
+    if (incl_buynhold) bnh_eqty_vec[i] <- round(bnh_ps_vec[i] * close_vec[i], 2)
   }
-  
-  tbl = tbl |>
-    add_column(pos_size = pos_size_vec,
-               pos_val = pos_val_vec,
-               cash = cash_vec,
-               eqty = eqty_vec,
-               eqty_l = eqty_low_vec,
-               eqty_h = eqty_high_vec,
-               .after = "trd_exit") |>
-    mutate(drawdn = round(log(eqty / slide_max(eqty, before=Inf)), 4),
-           pos_type = case_when(pos_size > 0 ~ "LONG",
-                                pos_size < 0 ~ "SHORT",
-                                .default = "FLAT"),
-           trd_num = slide_sum(trd_entry, before=Inf)) |>
+
+  tbl <- tbl |>
+    mutate(
+      pos_size = pos_size_vec,
+      pos_val = pos_val_vec,
+      cash = cash_vec,
+      eqty = eqty_vec,
+      eqty_l = eqty_low_vec,
+      eqty_h = eqty_high_vec,
+      drawdn = round(log(eqty / slide_max(eqty, before = Inf)), 4),
+      pos_type = case_when(pos_size > 0 ~ "LONG", pos_size < 0 ~ "SHORT", TRUE ~ "FLAT"),
+      trd_num = slide_sum(trd_entry, before = Inf)
+    ) |>
     group_by(trd_num) |>
-    mutate(is_closed = max(trd_exit),
-           trd_length = row_number(),
-           trd_base = round(first(open) * first(pos_size), 2),
-           trd_drawdn = round(log(eqty / slide_max(eqty, before=Inf)), 4),
-           trd_drawup = round(log(eqty / trd_base), 4),
-           trd_ur_drawdn = round(log(eqty / slide_max(eqty_h, before=Inf)), 4),
-           trd_ur_drawup = round(log(eqty_h / trd_base), 4)) |>
+    mutate(
+      is_closed = max(trd_exit),
+      trd_length = row_number(),
+      trd_base = round(first(open) * first(pos_size), 2),
+      trd_drawdn = round(log(eqty / slide_max(eqty, before = Inf)), 4),
+      trd_drawup = round(log(eqty / trd_base), 4),
+      trd_ur_drawdn = round(log(eqty / slide_max(eqty_h, before = Inf)), 4),
+      trd_ur_drawup = round(log(eqty_h / trd_base), 4)
+    ) |>
     ungroup() |>
-    mutate(trd_num = if_else(pos_size == 0, NA, trd_num),
-           trd_length = if_else(pos_size == 0, NA, trd_length),
-           trd_drawdn = if_else(pos_size == 0, NA, trd_drawdn),
-           trd_drawup = if_else(pos_size == 0, NA, trd_drawup),
-           trd_ur_drawdn = if_else(pos_size == 0, NA, trd_ur_drawdn),
-           trd_ur_drawup = if_else(pos_size == 0, NA, trd_ur_drawup),
-           trd_base = if_else(pos_size == 0, NA, trd_base),
-           pct_chg = round(
-             if_else(rn == 1, log(eqty/init_eqty), log(eqty/lag(eqty))),
-             4)
-           )
-  
+    mutate(
+      trd_num = if_else(pos_size == 0, NA, trd_num),
+      trd_length = if_else(pos_size == 0, NA, trd_length),
+      trd_drawdn = if_else(pos_size == 0, NA, trd_drawdn),
+      trd_drawup = if_else(pos_size == 0, NA, trd_drawup),
+      trd_ur_drawdn = if_else(pos_size == 0, NA, trd_ur_drawdn),
+      trd_ur_drawup = if_else(pos_size == 0, NA, trd_ur_drawup),
+      trd_base = if_else(pos_size == 0, NA, trd_base),
+      pct_chg = round(if_else(rn == 1, log(eqty / init_eqty), log(eqty / lag(eqty))), 4)
+    )
+
   if (incl_buynhold) {
-    tbl = tbl |>
-      add_column(
+    tbl <- tbl |>
+      mutate(
         bnh_pos_size = bnh_ps_vec,
         bnh_eqty = bnh_eqty_vec,
-        .after = "pct_chg"
-      ) |>
-      mutate(
-        bnh_pct_chg = round(
-         if_else(rn == 1, log(bnh_eqty/init_eqty), log(bnh_eqty/lag(bnh_eqty))),
-         4),
-        bnh_dd = round(log(bnh_eqty / slide_max(bnh_eqty, before=Inf)), 4),
-        .after = "bnh_eqty"
+        bnh_pct_chg = round(if_else(rn == 1, log(bnh_eqty / init_eqty), log(bnh_eqty / lag(bnh_eqty))), 4),
+        bnh_dd = round(log(bnh_eqty / slide_max(bnh_eqty, before = Inf)), 4)
       )
   }
 
@@ -1321,19 +1342,25 @@ rm_trds_gt_func <- \(tbl) {
 ### Back Test Processing
 
 ```{r}
-bt_processor <- \(data_tbl, 
-                  entry_func, 
-                  exit_func, 
-                  init_eqty = 10000, 
-                  incl_buynhold = TRUE, 
-                  incl_dividends = TRUE, 
+bt_processor <- \(data_tbl,
+                  entry_func,
+                  exit_func,
+                  strat_cfg = list(
+                    entry_timing = TradeTiming$OPEN,
+                    exit_timing = TradeTiming$OPEN,
+                    init_eqty = 10000,
+                    incl_buynhold = TRUE,
+                    incl_dividends = TRUE
+                  ),
                   ...) {
+  strat_cfg$entry_timing <- match.arg(strat_cfg$entry_timing, unlist(TradeTiming))
+  strat_cfg$exit_timing  <- match.arg(strat_cfg$exit_timing,  unlist(TradeTiming))
+  
   data_val = data_tbl |>
     add_trades_func(entry_func, exit_func) |>
     bt_sim_func(
-      init_eqty = init_eqty,
-      incl_dividends = incl_dividends,
-      incl_buynhold = incl_buynhold)
+      strat_cfg = strat_cfg
+    )
   
   trd_val = data_val |> bt_trds_func()
   
@@ -1427,6 +1454,14 @@ strtgy_exit <- \(.) {
         1, 0)
 }
 
+strat_cfg <- list(
+  entry_timing = TradeTiming$CLOSE,
+  exit_timing = TradeTiming$CLOSE,
+  init_eqty = 10000,
+  incl_buynhold = TRUE,
+  incl_dividends = TRUE
+)
+
 bt_strtgy <- result |>
   mutate(oc2 = (open + close) / 2,
          ultimateSmootherTbl(oc2, 10, 1)) |>
@@ -1439,9 +1474,7 @@ bt_strtgy <- result |>
 bt_metrics <- bt_processor(bt_strtgy,
                             strtgy_entry,
                             strtgy_exit,
-                            init_eqty = 10000,
-                            incl_buynhold = TRUE,
-                            incl_dividends = TRUE)
+                            strat_cfg)
 
 bt_metrics$rslts_viz()
 # bt_metrics$best_worst_viz(3)
